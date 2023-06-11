@@ -2,9 +2,17 @@
 
 package main
 
-import "net/http"
+import (
+	"go.opentelemetry.io/otel"
+)
 
 func main() {
-	mux := newServer()
-	_ = http.ListenAndServe(":8080", mux)
+	tp := otel.GetTracerProvider()
+	prop := otel.GetTextMapPropagator()
+
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(prop)
+
+	app := newEchoServer(tp, prop)
+	_ = app.Start(":8080")
 }
