@@ -2,17 +2,7 @@
 
 package main
 
-import (
-	"go.opentelemetry.io/otel"
-)
-
 func main() {
-	tp := otel.GetTracerProvider()
-	prop := otel.GetTextMapPropagator()
-
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(prop)
-
-	app := newEchoServer(tp, prop)
+	app := newEchoServer()
 	_ = app.Start(":8080")
 }

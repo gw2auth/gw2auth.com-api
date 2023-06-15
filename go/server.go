@@ -6,8 +6,6 @@ import (
 	"github.com/uptrace/opentelemetry-go-extra/otelzap"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"net/http"
 	"strconv"
@@ -23,7 +21,7 @@ func newLogger() *otelzap.Logger {
 	return otelzap.New(rootLog, otelzap.WithMinLevel(zap.InfoLevel))
 }
 
-func newServer(tp trace.TracerProvider, propagators propagation.TextMapPropagator) *http.ServeMux {
+func newServer() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v2/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -42,33 +40,32 @@ func newServer(tp trace.TracerProvider, propagators propagation.TextMapPropagato
 	return mux
 }
 
-func newEchoServer(tp trace.TracerProvider, prop propagation.TextMapPropagator) *echo.Echo {
+func newEchoServer() *echo.Echo {
 	rootLog := newLogger()
 	httpClient := &http.Client{
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
 	app := echo.New()
-	app.Any("/api/v2/ping", func(c echo.Context) error {
+	app.GET("/api/v2/ping", func(c echo.Context) error {
 		return c.String(http.StatusOK, "pong")
 	})
 
-	app.Any("/api/v2/ping-delayed", func(c echo.Context) error {
+	app.GET("/api/v2/ping-delayed", func(c echo.Context) error {
 		c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextPlain)
 		c.Response().WriteHeader(http.StatusOK)
 
 		for i := 0; i < 100; i++ {
 			_, _ = c.Response().Write([]byte(strconv.Itoa(i)))
 			_, _ = c.Response().Write([]byte("\n"))
-			c.Response().Flush()
 
-			time.Sleep(time.Second)
+			time.Sleep(time.Millisecond * 10)
 		}
 
 		return nil
 	})
 
-	app.Any("/otel", func(c echo.Context) error {
+	app.GET("/otel", func(c echo.Context) error {
 		ctx := c.Request().Context()
 		log := rootLog.Ctx(ctx)
 
@@ -90,7 +87,7 @@ func newEchoServer(tp trace.TracerProvider, prop propagation.TextMapPropagator) 
 		return c.JSONPretty(http.StatusOK, handler.GetSourceEvent(ctx), "\t")
 	})
 
-	mw := otelecho.Middleware("api", otelecho.WithTracerProvider(tp), otelecho.WithPropagators(prop))
+	mw := otelecho.Middleware("api.gw2auth.com")
 	app.Use(mw)
 
 	return app
