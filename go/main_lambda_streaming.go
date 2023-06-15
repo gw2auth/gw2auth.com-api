@@ -8,16 +8,14 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/its-felix/aws-lambda-go-http-adapter/adapter"
 	"github.com/its-felix/aws-lambda-go-http-adapter/handler"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-lambda-go/otellambda/xrayconfig"
-	"go.opentelemetry.io/contrib/propagators/aws/xray"
-	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-lambda-go/otellambda"
 )
 
 func main() {
 	ctx := context.Background()
-	tp, err := xrayconfig.NewTracerProvider(ctx)
+	tp, _, err := NewFunctionURLTracing("GW2AuthAPILambda", ctx)
 	if err != nil {
-		fmt.Printf("error creating tracer provider: %v", err)
+		panic(err)
 	}
 
 	defer func(ctx context.Context) {
@@ -27,12 +25,8 @@ func main() {
 		}
 	}(ctx)
 
-	prop := xray.Propagator{}
-
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(prop)
-
-	app := newEchoServer(tp, prop)
+	app := newEchoServer()
 	h := handler.NewFunctionURLStreamingHandler(adapter.NewEchoAdapter(app))
-	lambda.Start(h)
+
+	lambda.Start(otellambda.InstrumentHandler(h))
 }
