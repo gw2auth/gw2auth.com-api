@@ -1,6 +1,0 @@
-[submodule "cdk"]
-	path = cdk
-	url = git@github.com:gw2auth/gw2auth.com-cdk.git
-[submodule "opentelemetry-lambda"]
-	path = opentelemetry-lambda
-	url = git@github.com:open-telemetry/opentelemetry-lambda.git
