@@ -3,6 +3,11 @@
 package main
 
 func main() {
-	app := newEchoServer()
+	app, shutdownFunc, err := newConfiguredEchoServer()
+	defer shutdownFunc()
+	if err != nil {
+		panic(err)
+	}
+
 	_ = app.Start(":8080")
 }

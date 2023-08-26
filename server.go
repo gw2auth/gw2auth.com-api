@@ -1,51 +1,49 @@
 package main
 
 import (
-	"github.com/its-felix/aws-lambda-go-http-adapter/handler"
+	"context"
+	crdbpgx "github.com/cockroachdb/cockroach-go/v2/crdb/crdbpgxv5"
+	"github.com/exaring/otelpgx"
+	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/uptrace/opentelemetry-go-extra/otelzap"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 )
 
-func newLogger() *otelzap.Logger {
+func newLogger() (*otelzap.Logger, error) {
 	rootLog, err := zap.NewProduction()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return otelzap.New(rootLog, otelzap.WithMinLevel(zap.InfoLevel))
+	return otelzap.New(rootLog, otelzap.WithMinLevel(zap.InfoLevel)), nil
 }
 
-func newServer() *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v2/ping", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("pong"))
-	})
+func newPgx() (*pgx.Conn, error) {
+	config, err := pgx.ParseConfig(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		return nil, err
+	}
 
-	mux.HandleFunc("/api/v2/ping-delayed", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+	config.Tracer = otelpgx.NewTracer()
+	config.RuntimeParams["application_name"] = "api.gw2auth.com"
 
-		for i := 0; i < 10; i++ {
-			_, _ = w.Write([]byte("pong"))
-			time.Sleep(1 * time.Second)
-		}
-	})
-
-	return mux
+	return pgx.ConnectConfig(context.Background(), config)
 }
 
-func newEchoServer() *echo.Echo {
-	rootLog := newLogger()
-	httpClient := &http.Client{
+func newHttpClient() *http.Client {
+	return &http.Client{
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
+}
 
+func newEchoServer(log *otelzap.Logger, httpClient *http.Client, conn *pgx.Conn) *echo.Echo {
 	app := echo.New()
 	app.GET("/api/v2/ping", func(c echo.Context) error {
 		return c.String(http.StatusOK, "pong")
@@ -65,30 +63,83 @@ func newEchoServer() *echo.Echo {
 		return nil
 	})
 
-	app.GET("/otel", func(c echo.Context) error {
+	app.GET("/api/v2/application/summary", func(c echo.Context) error {
 		ctx := c.Request().Context()
-		log := rootLog.Ctx(ctx)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/open-telemetry/opentelemetry-go/releases/latest", nil)
+		var numAccounts uint32
+		var numApiTokens uint32
+		var numAccVerifications uint32
+		var numApps uint32
+		var numAppClients uint32
+		var numAppClientAccs uint32
+
+		err := crdbpgx.ExecuteTx(ctx, conn, pgx.TxOptions{}, func(tx pgx.Tx) error {
+			sql := `SELECT
+	(SELECT COUNT(*) FROM accounts),
+    (SELECT COUNT(*) FROM gw2_account_api_tokens),
+    (SELECT COUNT(*) FROM gw2_account_verifications),
+    (SELECT COUNT(*) FROM applications),
+    (SELECT COUNT(*) FROM application_clients),
+    (SELECT COUNT(*) FROM application_client_accounts WHERE ARRAY_LENGTH(authorized_scopes, 1) > 0)`
+
+			return tx.QueryRow(ctx, sql).Scan(
+				&numAccounts,
+				&numApiTokens,
+				&numAccVerifications,
+				&numApps,
+				&numAppClients,
+				&numAppClientAccs,
+			)
+		})
+
 		if err != nil {
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
-		res, err := httpClient.Do(req)
-		if err != nil {
-			return c.String(http.StatusInternalServerError, err.Error())
-		}
-		err = res.Body.Close()
-		if err != nil {
-			return c.String(http.StatusInternalServerError, err.Error())
-		}
-
-		log.Info("invocation finished, returning event")
-		return c.JSONPretty(http.StatusOK, handler.GetSourceEvent(ctx), "\t")
+		return c.JSONPretty(http.StatusOK, map[string]uint32{
+			"accounts":                  numAccounts,
+			"gw2ApiTokens":              numApiTokens,
+			"verifiedGw2Accounts":       numAccVerifications,
+			"applications":              numApps,
+			"applicationClients":        numAppClients,
+			"applicationClientAccounts": numAppClientAccs,
+		}, "\t")
 	})
 
 	mw := otelecho.Middleware("api.gw2auth.com")
 	app.Use(mw)
 
 	return app
+}
+
+func newConfiguredEchoServer() (*echo.Echo, func(), error) {
+	log, err := newLogger()
+	if err != nil {
+		return nil, shutdownFunc(nil, nil, nil), err
+	}
+
+	conn, err := newPgx()
+	if err != nil {
+		log.Error("failed to retrieve pgx conn", zap.Error(err))
+		return nil, shutdownFunc(log, nil, nil), err
+	}
+
+	app := newEchoServer(log, newHttpClient(), conn)
+	return app, shutdownFunc(log, conn, app), nil
+}
+
+func shutdownFunc(log *otelzap.Logger, conn *pgx.Conn, app *echo.Echo) func() {
+	return func() {
+		if log != nil {
+			defer log.Sync()
+		}
+
+		if conn != nil {
+			defer conn.Close(context.Background())
+		}
+
+		if app != nil {
+			defer app.Close()
+		}
+	}
 }

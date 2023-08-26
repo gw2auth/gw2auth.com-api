@@ -12,21 +12,23 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-	tp, _, err := NewFunctionURLTracing("GW2AuthAPILambda", ctx)
+	tp, _, err := NewFunctionURLTracing("GW2AuthAPILambda", context.Background())
 	if err != nil {
 		panic(err)
 	}
 
-	defer func(ctx context.Context) {
-		var err error
-		if err = tp.Shutdown(ctx); err != nil {
+	defer func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
 			fmt.Printf("error shutting down tracer provider: %v", err)
 		}
-	}(ctx)
+	}()
 
-	app := newEchoServer()
+	app, shutdownFunc, err := newConfiguredEchoServer()
+	defer shutdownFunc()
+	if err != nil {
+		panic(err)
+	}
+
 	h := handler.NewFunctionURLStreamingHandler(adapter.NewEchoAdapter(app))
-
 	lambda.Start(otellambda.InstrumentHandler(h))
 }
