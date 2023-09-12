@@ -18,8 +18,15 @@ func main() {
 	}
 
 	defer func() {
-		if err := tp.Shutdown(context.Background()); err != nil {
-			fmt.Printf("error shutting down tracer provider: %v", err)
+		var err error
+		ctx := context.Background()
+
+		if err = tp.ForceFlush(ctx); err != nil {
+			fmt.Printf("error flushing %v\n", err)
+		}
+
+		if err = tp.Shutdown(ctx); err != nil {
+			fmt.Printf("error shutting down tracer provider: %v\n", err)
 		}
 	}()
 
