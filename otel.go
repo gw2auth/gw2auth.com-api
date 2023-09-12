@@ -43,6 +43,7 @@ func NewFunctionURLTracerProvider(serviceName string, ctx context.Context) (*sdk
 	resource = sdkresource.NewWithAttributes(resource.SchemaURL(), attrs...)
 
 	return sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 		sdktrace.WithBatcher(exp),
 		sdktrace.WithIDGenerator(xray.NewIDGenerator()),
 		sdktrace.WithResource(resource),
