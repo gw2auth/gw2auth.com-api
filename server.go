@@ -96,6 +96,8 @@ func newEchoServer(log *otelzap.Logger, httpClient *http.Client, conn *pgx.Conn)
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
+		log.Info("successfully processed application summary request")
+
 		return c.JSONPretty(http.StatusOK, map[string]uint32{
 			"accounts":                  numAccounts,
 			"gw2ApiTokens":              numApiTokens,
