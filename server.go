@@ -65,6 +65,7 @@ func newEchoServer(log *otelzap.Logger, httpClient *http.Client, conn *pgx.Conn)
 
 	app.GET("/api/v2/application/summary", func(c echo.Context) error {
 		ctx := c.Request().Context()
+		log := log.Ctx(ctx)
 
 		var numAccounts uint32
 		var numApiTokens uint32
