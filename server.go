@@ -76,7 +76,7 @@ func newEchoServer(log *otelzap.Logger, httpClient *http.Client, conn *pgx.Conn)
 		err := crdbpgx.ExecuteTx(ctx, conn, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			sql := `SELECT
 	(SELECT COUNT(*) FROM accounts),
-    (SELECT COUNT(*) FROM gw2_account_api_tokens),
+    (SELECT COUNT(*) FROM gw2_account_api_tokens WHERE last_valid_time = last_valid_check_time),
     (SELECT COUNT(*) FROM gw2_account_verifications),
     (SELECT COUNT(*) FROM applications),
     (SELECT COUNT(*) FROM application_clients),
