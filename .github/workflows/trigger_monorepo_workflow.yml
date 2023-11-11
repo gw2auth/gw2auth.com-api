@@ -3,26 +3,25 @@ name: 'Trigger monorepo workflow'
 on:
   push:
     branches:
-      - main
+      - '*'
 
 jobs:
-  create_monorepo_cr:
-    name: 'Trigger monorepo workflow'
+  build_and_test:
+    name: 'Build, Test'
     runs-on: ubuntu-latest
     steps:
-      - name: 'Trigger monorepo workflow'
-        uses: actions/github-script@v6
+      - name: 'Checkout'
+        uses: actions/checkout@v4
+      - name: 'Build, Test'
+        uses: './.github/actions/build_and_test'
         with:
-          github-token: ${{ secrets.MONOREPO_DISPATCH_PAT }}
-          script: |
-            const { owner, repo } = context.repo;
-            await github.rest.actions.createWorkflowDispatch({
-              owner: owner,
-              repo: 'gw2auth.com-monorepo',
-              workflow_id: 'create_pr_for_submodule.yml',
-              ref: 'beta',
-              inputs: {
-                submodule: repo,
-                submodule_ref: context.sha,
-              },
-            });
+          working-directory: '.'
+          output: 'bootstrap'
+
+  trigger_monorepo_workflow:
+    name: 'Trigger monorepo workflow'
+    needs:
+      - build_and_test
+    uses: gw2auth/gw2auth.com-monorepo/.github/workflows/trigger_monorepo_workflow.yml@beta
+    secrets:
+      token: ${{ secrets.MONOREPO_DISPATCH_PAT }}
