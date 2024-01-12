@@ -2,19 +2,38 @@ package main
 
 import (
 	"context"
-	crdbpgx "github.com/cockroachdb/cockroach-go/v2/crdb/crdbpgxv5"
+	"crypto/rsa"
+	"errors"
+	"fmt"
 	"github.com/exaring/otelpgx"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/gw2auth/gw2auth.com-api/service"
+	"github.com/gw2auth/gw2auth.com-api/service/auth"
+	"github.com/gw2auth/gw2auth.com-api/service/gw2"
+	"github.com/gw2auth/gw2auth.com-api/web"
+	pgxuuid "github.com/jackc/pgx-gofrs-uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/uptrace/opentelemetry-go-extra/otelzap"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-lambda-go/otellambda"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
 	"net/http"
-	"os"
-	"strconv"
-	"time"
 )
+
+type Secrets struct {
+	DatabaseURL           string `json:"databaseURL"`
+	SessionRSAPublicKid1  string `json:"sessionRSAPublicKid1"`
+	SessionRSAPublicKid2  string `json:"sessionRSAPublicKid2"`
+	SessionRSAPrivateKid2 string `json:"sessionRSAPrivateKid2"`
+	SessionRSAPublicPEM1  string `json:"sessionRSAPublicPEM1"`
+	SessionRSAPublicPEM2  string `json:"sessionRSAPublicPEM2"`
+	SessionRSAPrivatePEM2 string `json:"sessionRSAPrivatePEM2"`
+}
+
+type Option func(app *echo.Echo)
 
 func newLogger() (*otelzap.Logger, error) {
 	rootLog, err := zap.NewProduction()
@@ -25,16 +44,44 @@ func newLogger() (*otelzap.Logger, error) {
 	return otelzap.New(rootLog, otelzap.WithMinLevel(zap.InfoLevel)), nil
 }
 
-func newPgx() (*pgx.Conn, error) {
-	config, err := pgx.ParseConfig(os.Getenv("DATABASE_URL"))
+func newPgx(secrets Secrets) (*pgxpool.Pool, error) {
+	config, err := pgxpool.ParseConfig(secrets.DatabaseURL)
 	if err != nil {
 		return nil, err
 	}
 
-	config.Tracer = otelpgx.NewTracer()
-	config.RuntimeParams["application_name"] = "api.gw2auth.com"
+	config.ConnConfig.Tracer = otelpgx.NewTracer()
+	config.ConnConfig.RuntimeParams["application_name"] = "api.gw2auth.com"
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		pgxuuid.Register(conn.TypeMap())
+		return nil
+	}
 
-	return pgx.ConnectConfig(context.Background(), config)
+	return pgxpool.NewWithConfig(context.Background(), config)
+}
+
+func newConv(secrets Secrets) (*service.SessionJwtConverter, error) {
+	pub1, err := jwt.ParseRSAPublicKeyFromPEM([]byte(secrets.SessionRSAPublicPEM1))
+	if err != nil {
+		return nil, err
+	}
+
+	pub2, err := jwt.ParseRSAPublicKeyFromPEM([]byte(secrets.SessionRSAPublicPEM2))
+	if err != nil {
+		return nil, err
+	}
+
+	priv, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(secrets.SessionRSAPrivatePEM2))
+	if err != nil {
+		return nil, err
+	}
+
+	pub := map[string]*rsa.PublicKey{
+		secrets.SessionRSAPublicKid1: pub1,
+		secrets.SessionRSAPublicKid2: pub2,
+	}
+
+	return service.NewSessionJwtConverter(secrets.SessionRSAPrivateKid2, priv, pub), nil
 }
 
 func newHttpClient() *http.Client {
@@ -43,106 +90,134 @@ func newHttpClient() *http.Client {
 	}
 }
 
-func newEchoServer(log *otelzap.Logger, httpClient *http.Client, conn *pgx.Conn) *echo.Echo {
+func newGw2ApiClient() *gw2.ApiClient {
+	return gw2.NewApiClient(newHttpClient(), "https://api.guildwars2.com")
+}
+
+func newEchoServer(log *otelzap.Logger, pool *pgxpool.Pool, gw2ApiClient *gw2.ApiClient, conv *service.SessionJwtConverter, options ...Option) *echo.Echo {
 	app := echo.New()
-	app.GET("/api/v2/ping", func(c echo.Context) error {
-		return c.String(http.StatusOK, "pong")
-	})
 
-	app.GET("/api/v2/ping-delayed", func(c echo.Context) error {
-		c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextPlain)
-		c.Response().WriteHeader(http.StatusOK)
+	for _, opt := range options {
+		opt(app)
+	}
 
-		for i := 0; i < 100; i++ {
-			_, _ = c.Response().Write([]byte(strconv.Itoa(i)))
-			_, _ = c.Response().Write([]byte("\n"))
+	app.Use(
+		otelecho.Middleware("api.gw2auth.com"),
+		web.Middleware(log, pool),
+	)
 
-			time.Sleep(time.Millisecond * 10)
-		}
+	// region UI
+	uiGroup := app.Group("/api-v2", web.CSRFMiddleware())
+	authMw := web.AuthenticatedMiddleware(conv)
 
-		return nil
-	})
+	uiGroup.GET("/account", web.AccountEndpoint(), authMw)
+	uiGroup.DELETE("/account", web.DeleteAccountEndpoint(), authMw)
+	uiGroup.DELETE("/account/federation", web.DeleteAccountFederationEndpoint(), authMw)
+	uiGroup.DELETE("/account/session", web.DeleteAccountFederationSessionEndpoint(), authMw)
 
-	app.GET("/api/v2/application/summary", func(c echo.Context) error {
-		ctx := c.Request().Context()
-		log := log.Ctx(ctx)
+	uiGroup.GET("/application/summary", web.AppSummaryEndpoint())
+	uiGroup.GET("/authinfo", web.AuthInfoEndpoint(), authMw)
+	uiGroup.GET("/gw2account", web.Gw2AccountsEndpoint(), authMw)
+	uiGroup.GET("/gw2account/:id", web.Gw2AccountEndpoint(), authMw)
+	uiGroup.PATCH("/gw2account/:id", web.UpdateGw2AccountEndpoint(), authMw)
 
-		var numAccounts uint32
-		var numApiTokens uint32
-		var numAccVerifications uint32
-		var numApps uint32
-		var numAppClients uint32
-		var numAppClientAccs uint32
+	addOrUpdateTokenEndpoint := web.AddOrUpdateApiTokenEndpoint(gw2ApiClient)
+	uiGroup.PUT("/gw2apitoken", addOrUpdateTokenEndpoint, authMw)
+	uiGroup.PUT("/gw2apitoken/:id", addOrUpdateTokenEndpoint, authMw)
+	uiGroup.PATCH("/gw2apitoken", addOrUpdateTokenEndpoint, authMw)
+	uiGroup.PATCH("/gw2apitoken/:id", addOrUpdateTokenEndpoint, authMw)
+	uiGroup.DELETE("/gw2apitoken/:id", web.DeleteApiTokenEndpoint(), authMw)
 
-		err := crdbpgx.ExecuteTx(ctx, conn, pgx.TxOptions{}, func(tx pgx.Tx) error {
-			sql := `SELECT
-	(SELECT COUNT(*) FROM accounts),
-    (SELECT COUNT(*) FROM gw2_account_api_tokens WHERE last_valid_time = last_valid_check_time),
-    (SELECT COUNT(*) FROM gw2_account_verifications),
-    (SELECT COUNT(*) FROM applications),
-    (SELECT COUNT(*) FROM application_clients),
-    (SELECT COUNT(*) FROM application_client_accounts WHERE ARRAY_LENGTH(authorized_scopes, 1) > 0)`
+	uiGroup.GET("/application", web.UserApplicationsEndpoint(), authMw)
+	uiGroup.GET("/application/:id", web.UserApplicationEndpoint(), authMw)
+	uiGroup.DELETE("/application/:id", web.DeleteUserApplicationEndpoint(), authMw)
 
-			return tx.QueryRow(ctx, sql).Scan(
-				&numAccounts,
-				&numApiTokens,
-				&numAccVerifications,
-				&numApps,
-				&numAppClients,
-				&numAppClientAccs,
-			)
-		})
+	uiGroup.GET("/verification/active", web.VerificationActiveEndpoint(), authMw)
+	uiGroup.GET("/verification/pending", web.VerificationPendingEndpoint(), authMw)
 
-		if err != nil {
-			return c.String(http.StatusInternalServerError, err.Error())
-		}
+	uiGroup.PUT("/dev/application", web.CreateDevApplicationEndpoint(), authMw)
+	uiGroup.GET("/dev/application", web.DevApplicationsEndpoint(), authMw)
+	uiGroup.GET("/dev/application/:id", web.DevApplicationEndpoint(), authMw)
+	uiGroup.DELETE("/dev/application/:id", web.DeleteDevApplicationEndpoint(), authMw)
+	uiGroup.GET("/dev/application/:id/user", web.DevApplicationUsersEndpoint(), authMw)
+	uiGroup.PUT("/dev/application/:id/client", web.CreateDevApplicationClientEndpoint(), authMw)
+	uiGroup.GET("/dev/application/:app_id/client/:client_id", web.DevApplicationClientEndpoint(), authMw)
+	uiGroup.DELETE("/dev/application/:app_id/client/:client_id", web.DeleteDevApplicationClientEndpoint(), authMw)
+	uiGroup.POST("/dev/application/:app_id/client/:client_id/secret", web.RegenerateDevApplicationClientSecretEndpoint(), authMw)
+	uiGroup.PUT("/dev/application/:app_id/client/:client_id/redirecturi", web.UpdateDevApplicationClientRedirectURIsEndpoint(), authMw)
+	uiGroup.PATCH("/dev/application/:app_id/client/:client_id/user/:user_id", web.UpdateDevApplicationClientUserEndpoint(), authMw)
+	uiGroup.PUT("/dev/application/:id/apikey", web.CreateDevApplicationAPIKeyEndpoint(), authMw)
+	uiGroup.DELETE("/dev/application/:app_id/apikey/:key_id", web.DeleteDevApplicationAPIKeyEndpoint(), authMw)
+	// endregion
 
-		log.Info("successfully processed application summary request")
-
-		return c.JSONPretty(http.StatusOK, map[string]uint32{
-			"accounts":                  numAccounts,
-			"gw2ApiTokens":              numApiTokens,
-			"verifiedGw2Accounts":       numAccVerifications,
-			"applications":              numApps,
-			"applicationClients":        numAppClients,
-			"applicationClientAccounts": numAppClientAccs,
-		}, "\t")
-	})
-
-	mw := otelecho.Middleware("api.gw2auth.com")
-	app.Use(mw)
+	// region application api
+	applicationAPIGroup := app.Group("/api-app", web.ApplicationAPIKeyAuthenticatedMiddleware())
+	applicationAPIGroup.PATCH("/application/client/:client_id/redirecturi", web.ModifyDevApplicationClientRedirectURIsEndpoint(), web.ApplicationAPIKeyPermissionMiddleware(auth.PermissionClientModify))
+	// endregion
 
 	return app
 }
 
-func newConfiguredEchoServer() (*echo.Echo, func(), error) {
-	log, err := newLogger()
+func WithEchoServer(ctx context.Context, fn func(ctx context.Context, app *echo.Echo) error, options ...Option) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	secrets, err := loadSecrets(ctx)
 	if err != nil {
-		return nil, shutdownFunc(nil, nil, nil), err
+		return err
 	}
 
-	conn, err := newPgx()
-	if err != nil {
-		log.Error("failed to retrieve pgx conn", zap.Error(err))
-		return nil, shutdownFunc(log, nil, nil), err
-	}
-
-	app := newEchoServer(log, newHttpClient(), conn)
-	return app, shutdownFunc(log, conn, app), nil
+	return withLogger(func(log *otelzap.Logger) error {
+		return withPgx(secrets, func(pool *pgxpool.Pool) error {
+			return withConv(secrets, func(conv *service.SessionJwtConverter) error {
+				return fn(ctx, newEchoServer(log, pool, newGw2ApiClient(), conv, options...))
+			})
+		})
+	})
 }
 
-func shutdownFunc(log *otelzap.Logger, conn *pgx.Conn, app *echo.Echo) func() {
-	return func() {
-		if log != nil {
-			defer log.Sync()
-		}
-
-		if conn != nil {
-			defer conn.Close(context.Background())
-		}
-
-		if app != nil {
-			defer app.Close()
-		}
+func WithFlusher(flusher otellambda.Flusher) Option {
+	return func(app *echo.Echo) {
+		app.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				ctx := c.Request().Context()
+				defer flusher.ForceFlush(ctx)
+				return next(c)
+			}
+		})
 	}
+}
+
+func withLogger(fn func(log *otelzap.Logger) error) error {
+	log, err := newLogger()
+	if err != nil {
+		return err
+	}
+
+	err = fn(log)
+	if syncErr := log.Sync(); syncErr != nil {
+		err = errors.Join(err, fmt.Errorf("error syncing logger: %w", syncErr))
+	}
+
+	return err
+}
+
+func withPgx(secrets Secrets, fn func(pool *pgxpool.Pool) error) error {
+	pool, err := newPgx(secrets)
+	if err != nil {
+		return err
+	}
+
+	defer pool.Close()
+
+	return fn(pool)
+}
+
+func withConv(secrets Secrets, fn func(conv *service.SessionJwtConverter) error) error {
+	conv, err := newConv(secrets)
+	if err != nil {
+		return err
+	}
+
+	return fn(conv)
 }
