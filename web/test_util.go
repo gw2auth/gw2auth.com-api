@@ -12,6 +12,7 @@ func newEchoWithMiddleware(pool *pgxpool.Pool, conv *service.SessionJwtConverter
 	e := echo.New()
 	e.Use(
 		Middleware(otelzap.New(zap.NewNop()), pool),
+		DeleteHistoricalCookiesMiddleware(),
 		AuthenticatedMiddleware(conv),
 	)
 

@@ -107,7 +107,7 @@ func newEchoServer(log *otelzap.Logger, pool *pgxpool.Pool, gw2ApiClient *gw2.Ap
 	)
 
 	// region UI
-	uiGroup := app.Group("/api-v2", web.CSRFMiddleware())
+	uiGroup := app.Group("/api-v2", web.DeleteHistoricalCookiesMiddleware(), web.CSRFMiddleware())
 	authMw := web.AuthenticatedMiddleware(conv)
 
 	uiGroup.GET("/account", web.AccountEndpoint(), authMw)

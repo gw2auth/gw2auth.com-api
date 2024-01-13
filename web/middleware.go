@@ -89,6 +89,16 @@ func isSecure(c echo.Context) bool {
 	return false
 }
 
+func deleteCookie(c echo.Context, cookie *http.Cookie) {
+	cookie = &http.Cookie{
+		Name:   cookie.Name,
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	}
+	c.SetCookie(cookie)
+}
+
 func Middleware(log *otelzap.Logger, pool *pgxpool.Pool) echo.MiddlewareFunc {
 	return contextManipulatingMiddleware(func(c echo.Context) (context.Context, context.CancelFunc, error) {
 		ctx := c.Request().Context()
@@ -108,16 +118,6 @@ func AuthenticatedMiddleware(conv *service.SessionJwtConverter) echo.MiddlewareF
 			Secure:   cookie.Secure || isSecure(c),
 			HttpOnly: true,
 			SameSite: http.SameSiteStrictMode,
-		}
-		c.SetCookie(cookie)
-	}
-
-	deleteCookie := func(c echo.Context, cookie *http.Cookie) {
-		cookie = &http.Cookie{
-			Name:   cookie.Name,
-			Value:  "",
-			Path:   "/",
-			MaxAge: -1,
 		}
 		c.SetCookie(cookie)
 	}
@@ -190,6 +190,11 @@ func AuthenticatedMiddleware(conv *service.SessionJwtConverter) echo.MiddlewareF
 		}
 
 		updateCookie(c, cookie, jwtStr, session.ExpirationTime)
+
+		// this cookie should no longer be persisted if the request is already authenticated
+		if cookie, err := c.Cookie("REDIRECT_URI"); err == nil {
+			deleteCookie(c, cookie)
+		}
 
 		ctx, span := tracer.Start(
 			ctx,
@@ -345,6 +350,20 @@ func CSRFMiddleware() echo.MiddlewareFunc {
 				return echo.NewHTTPError(http.StatusBadRequest, "missing csrf token in request header")
 			} else if clientToken != token {
 				return echo.NewHTTPError(http.StatusForbidden, "invalid csrf token")
+			}
+
+			return next(c)
+		}
+	}
+}
+
+func DeleteHistoricalCookiesMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			for _, name := range []string{"cookieconsent_status", "JSESSIONID"} {
+				if cookie, err := c.Cookie(name); err == nil {
+					deleteCookie(c, cookie)
+				}
 			}
 
 			return next(c)
