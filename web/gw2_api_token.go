@@ -1,8 +1,10 @@
 package web
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"github.com/gofrs/uuid/v5"
 	"github.com/gw2auth/gw2auth.com-api/service/auth"
@@ -13,7 +15,9 @@ import (
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
+	"unicode"
 )
 
 type apiTokenAddOrUpdateResponse struct {
@@ -79,7 +83,7 @@ func AddOrUpdateApiTokenEndpoint(gw2ApiClient *gw2.ApiClient) echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, "the provided apitoken does not provide the account permission")
 		}
 
-		isVerifiedAdd := expectAdd && tokenInfo.Name == verificationTokenNameForSession(session.Id)
+		isVerifiedAdd := expectAdd && verifyTokenName(tokenInfo.Name, session.Id)
 		gw2ApiPermissionsBitSet := gw2.PermissionsToBitSet(tokenInfo.Permissions)
 
 		creationTime := time.Now()
@@ -244,8 +248,40 @@ func httpErrorForGw2ApiError(err error) error {
 	return echo.NewHTTPError(http.StatusInternalServerError, err)
 }
 
+func verifyTokenName(name, sessionId string) bool {
+	prefix, suffix, ok := strings.Cut(strings.TrimRightFunc(name, unicode.IsSpace), "-")
+	if !ok || prefix != "GW2Auth" {
+		return false
+	}
+
+	b, err := base64.RawURLEncoding.DecodeString(suffix)
+	if err != nil || len(b) != 20 {
+		return false
+	}
+
+	buf := bytes.NewBuffer(b)
+
+	hourSinceEpoch := time.Duration(binary.BigEndian.Uint32(buf.Next(4)))
+	ts := time.Date(1970, time.January, 1, 0, 0, 0, 0, time.UTC).Add(hourSinceEpoch * time.Hour)
+	now := time.Now()
+
+	if now.Before(ts) || now.Sub(ts) >= (time.Hour*6) {
+		return false
+	}
+
+	hash := sha256.Sum256([]byte(sessionId))
+	return bytes.Equal(hash[:16], buf.Next(16))
+}
+
 func verificationTokenNameForSession(sessionId string) string {
-	b := sha256.Sum256([]byte(sessionId))
-	v := base64.RawURLEncoding.EncodeToString(b[:])
-	return "GW2Auth-Add-" + v[:16]
+	// 4 bytes for time, 16 bytes for hash
+	b := make([]byte, 0, 20)
+
+	hoursSinceEpoch := uint32(time.Since(time.Date(1970, time.January, 1, 0, 0, 0, 0, time.UTC)) / time.Hour)
+	b = binary.BigEndian.AppendUint32(b, hoursSinceEpoch)
+
+	hash := sha256.Sum256([]byte(sessionId))
+	b = append(b, hash[:16]...)
+
+	return "GW2Auth-" + base64.RawURLEncoding.EncodeToString(b)
 }
