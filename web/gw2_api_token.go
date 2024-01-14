@@ -1,6 +1,8 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"github.com/gofrs/uuid/v5"
 	"github.com/gw2auth/gw2auth.com-api/service/auth"
@@ -14,7 +16,14 @@ import (
 	"time"
 )
 
-type apiTokenAddOrUpdate struct {
+type apiTokenAddOrUpdateResponse struct {
+	Value        string           `json:"value"`
+	CreationTime time.Time        `json:"creationTime"`
+	Permissions  []gw2.Permission `json:"permissions"`
+	Verified     bool             `json:"verified"`
+}
+
+type apiTokenAddOrUpdateRequest struct {
 	ApiToken string `json:"apiToken,omitempty"`
 }
 
@@ -31,7 +40,7 @@ func AddOrUpdateApiTokenEndpoint(gw2ApiClient *gw2.ApiClient) echo.HandlerFunc {
 
 		expectAdd := c.Request().Method == http.MethodPut
 
-		var body apiTokenAddOrUpdate
+		var body apiTokenAddOrUpdateRequest
 		if err := c.Bind(&body); err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
@@ -70,6 +79,7 @@ func AddOrUpdateApiTokenEndpoint(gw2ApiClient *gw2.ApiClient) echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, "the provided apitoken does not provide the account permission")
 		}
 
+		isVerifiedAdd := expectAdd && tokenInfo.Name == verificationTokenNameForSession(session.Id)
 		gw2ApiPermissionsBitSet := gw2.PermissionsToBitSet(tokenInfo.Permissions)
 
 		creationTime := time.Now()
@@ -98,7 +108,7 @@ SELECT
 				return echo.NewHTTPError(http.StatusBadRequest, "expected to add a new apitoken but an apitoken for this gw2account already exists with different permissions")
 			}
 
-			if verifiedForAccountId != nil && *verifiedForAccountId != session.AccountId {
+			if !isVerifiedAdd && verifiedForAccountId != nil && *verifiedForAccountId != session.AccountId {
 				return echo.NewHTTPError(http.StatusNotAcceptable, "the gw2account is already verified for another gw2auth account")
 			}
 
@@ -145,7 +155,31 @@ last_valid_check_time = EXCLUDED.last_valid_check_time
 				gw2ApiPermissionsBitSet,
 			)
 
-			return err
+			if err != nil {
+				return err
+			}
+
+			if isVerifiedAdd {
+				sqls := []string{
+					"DELETE FROM gw2_account_api_tokens WHERE gw2_account_id = $1 AND account_id != $2",
+					"INSERT INTO gw2_account_verifications (gw2_account_id, account_id) VALUES ($1, $2) ON CONFLICT (gw2_account_id) DO UPDATE SET account_id = EXCLUDED.account_id",
+				}
+
+				for _, sql = range sqls {
+					_, err = tx.Exec(
+						ctx,
+						sql,
+						gw2Acc.Id,
+						session.AccountId,
+					)
+
+					if err != nil {
+						return err
+					}
+				}
+			}
+
+			return nil
 		})
 
 		if err != nil {
@@ -157,10 +191,11 @@ last_valid_check_time = EXCLUDED.last_valid_check_time
 			}
 		}
 
-		return c.JSON(http.StatusOK, apiToken{
+		return c.JSON(http.StatusOK, apiTokenAddOrUpdateResponse{
 			Value:        body.ApiToken,
 			CreationTime: creationTime,
 			Permissions:  tokenInfo.Permissions,
+			Verified:     isVerifiedAdd,
 		})
 	})
 }
@@ -191,6 +226,14 @@ AND gw2_account_id = $2
 	})
 }
 
+func ApiTokenVerificationEndpoint() echo.HandlerFunc {
+	return wrapAuthenticatedHandlerFunc(func(c echo.Context, rctx RequestContext, session auth.Session) error {
+		return c.JSON(http.StatusOK, map[string]string{
+			"tokenName": verificationTokenNameForSession(session.Id),
+		})
+	})
+}
+
 func httpErrorForGw2ApiError(err error) error {
 	if errors.Is(err, gw2.ErrInvalidApiToken) {
 		return echo.NewHTTPError(http.StatusBadRequest, err)
@@ -199,4 +242,10 @@ func httpErrorForGw2ApiError(err error) error {
 	}
 
 	return echo.NewHTTPError(http.StatusInternalServerError, err)
+}
+
+func verificationTokenNameForSession(sessionId string) string {
+	b := sha256.Sum256([]byte(sessionId))
+	v := base64.RawURLEncoding.EncodeToString(b[:])
+	return "GW2Auth-Add-" + v[:16]
 }

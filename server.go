@@ -127,6 +127,7 @@ func newEchoServer(log *otelzap.Logger, pool *pgxpool.Pool, gw2ApiClient *gw2.Ap
 	uiGroup.PATCH("/gw2apitoken", addOrUpdateTokenEndpoint, authMw)
 	uiGroup.PATCH("/gw2apitoken/:id", addOrUpdateTokenEndpoint, authMw)
 	uiGroup.DELETE("/gw2apitoken/:id", web.DeleteApiTokenEndpoint(), authMw)
+	uiGroup.GET("/gw2apitoken/verification", web.ApiTokenVerificationEndpoint(), authMw)
 
 	uiGroup.GET("/application", web.UserApplicationsEndpoint(), authMw)
 	uiGroup.GET("/application/:id", web.UserApplicationEndpoint(), authMw)
