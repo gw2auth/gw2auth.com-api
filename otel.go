@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/agoda-com/opentelemetry-go/otelslog"
 	"github.com/agoda-com/opentelemetry-logs-go/exporters/otlp/otlplogs"
+	"github.com/agoda-com/opentelemetry-logs-go/exporters/otlp/otlplogs/otlplogsgrpc"
 	"github.com/agoda-com/opentelemetry-logs-go/exporters/stdout/stdoutlogs"
 	sdklogs "github.com/agoda-com/opentelemetry-logs-go/sdk/logs"
 	"go.opentelemetry.io/contrib/detectors/aws/lambda"
@@ -119,7 +120,11 @@ func newFunctionURLLogging(ctx context.Context, resource *sdkresource.Resource) 
 }
 
 func newFunctionURLLoggerProvider(ctx context.Context, resource *sdkresource.Resource) (*sdklogs.LoggerProvider, error) {
-	exp, err := otlplogs.NewExporter(ctx)
+	client := otlplogsgrpc.NewClient(
+		otlplogsgrpc.WithInsecure(),
+	)
+
+	exp, err := otlplogs.NewExporter(ctx, otlplogs.WithClient(client))
 	if err != nil {
 		return nil, err
 	}
