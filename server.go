@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"crypto/rsa"
-	"errors"
-	"fmt"
 	"github.com/exaring/otelpgx"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gw2auth/gw2auth.com-api/service"
@@ -15,11 +13,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
-	"github.com/uptrace/opentelemetry-go-extra/otelzap"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-lambda-go/otellambda"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.uber.org/zap"
 	"net/http"
 )
 
@@ -34,15 +30,6 @@ type Secrets struct {
 }
 
 type Option func(app *echo.Echo)
-
-func newLogger() (*otelzap.Logger, error) {
-	rootLog, err := zap.NewProduction()
-	if err != nil {
-		return nil, err
-	}
-
-	return otelzap.New(rootLog, otelzap.WithMinLevel(zap.InfoLevel)), nil
-}
 
 func newPgx(secrets Secrets) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(secrets.DatabaseURL)
@@ -94,7 +81,7 @@ func newGw2ApiClient() *gw2.ApiClient {
 	return gw2.NewApiClient(newHttpClient(), "https://api.guildwars2.com")
 }
 
-func newEchoServer(log *otelzap.Logger, pool *pgxpool.Pool, gw2ApiClient *gw2.ApiClient, conv *service.SessionJwtConverter, options ...Option) *echo.Echo {
+func newEchoServer(pool *pgxpool.Pool, gw2ApiClient *gw2.ApiClient, conv *service.SessionJwtConverter, options ...Option) *echo.Echo {
 	app := echo.New()
 
 	for _, opt := range options {
@@ -103,7 +90,7 @@ func newEchoServer(log *otelzap.Logger, pool *pgxpool.Pool, gw2ApiClient *gw2.Ap
 
 	app.Use(
 		otelecho.Middleware("api.gw2auth.com"),
-		web.Middleware(log, pool),
+		web.Middleware(pool),
 	)
 
 	// region UI
@@ -168,11 +155,9 @@ func WithEchoServer(ctx context.Context, fn func(ctx context.Context, app *echo.
 		return err
 	}
 
-	return withLogger(func(log *otelzap.Logger) error {
-		return withPgx(secrets, func(pool *pgxpool.Pool) error {
-			return withConv(secrets, func(conv *service.SessionJwtConverter) error {
-				return fn(ctx, newEchoServer(log, pool, newGw2ApiClient(), conv, options...))
-			})
+	return withPgx(secrets, func(pool *pgxpool.Pool) error {
+		return withConv(secrets, func(conv *service.SessionJwtConverter) error {
+			return fn(ctx, newEchoServer(pool, newGw2ApiClient(), conv, options...))
 		})
 	})
 }
@@ -181,26 +166,11 @@ func WithFlusher(flusher otellambda.Flusher) Option {
 	return func(app *echo.Echo) {
 		app.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {
 			return func(c echo.Context) error {
-				ctx := c.Request().Context()
-				defer flusher.ForceFlush(ctx)
+				defer flusher.ForceFlush(c.Request().Context())
 				return next(c)
 			}
 		})
 	}
-}
-
-func withLogger(fn func(log *otelzap.Logger) error) error {
-	log, err := newLogger()
-	if err != nil {
-		return err
-	}
-
-	err = fn(log)
-	if syncErr := log.Sync(); syncErr != nil {
-		err = errors.Join(err, fmt.Errorf("error syncing logger: %w", syncErr))
-	}
-
-	return err
 }
 
 func withPgx(secrets Secrets, fn func(pool *pgxpool.Pool) error) error {

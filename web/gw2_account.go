@@ -8,7 +8,7 @@ import (
 	"github.com/gw2auth/gw2auth.com-api/util"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
-	"go.uber.org/zap"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -250,9 +250,9 @@ func UpdateGw2AccountEndpoint() echo.HandlerFunc {
 
 		rctx.Log().Info(
 			"updating gw2account",
-			zap.String("accountId", session.AccountId.String()),
-			zap.String("gw2AccountId", gw2AccountId.String()),
-			zap.String("displayName", update.DisplayName),
+			slog.String("accountId", session.AccountId.String()),
+			slog.String("gw2AccountId", gw2AccountId.String()),
+			slog.String("displayName", update.DisplayName),
 		)
 
 		ctx := c.Request().Context()

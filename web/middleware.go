@@ -12,11 +12,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
-	"github.com/uptrace/opentelemetry-go-extra/otelzap"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -32,17 +31,38 @@ type requestContextKey struct{}
 type sessionContextKey struct{}
 type applicationApiKeyContextKey struct{}
 
+type SlogWithCtx struct {
+	ctx context.Context
+	log *slog.Logger
+}
+
+func (s SlogWithCtx) Debug(msg string, args ...any) {
+	s.log.DebugContext(s.ctx, msg, args...)
+}
+
+func (s SlogWithCtx) Info(msg string, args ...any) {
+	s.log.InfoContext(s.ctx, msg, args...)
+}
+
+func (s SlogWithCtx) Warn(msg string, args ...any) {
+	s.log.WarnContext(s.ctx, msg, args...)
+}
+
+func (s SlogWithCtx) Error(msg string, args ...any) {
+	s.log.ErrorContext(s.ctx, msg, args...)
+}
+
 type RequestContext interface {
-	Log() otelzap.LoggerWithCtx
+	Log() SlogWithCtx
 	ExecuteTx(ctx context.Context, txOptions pgx.TxOptions, fn func(pgx.Tx) error) error
 }
 
 type requestContext struct {
-	log  otelzap.LoggerWithCtx
+	log  SlogWithCtx
 	pool *pgxpool.Pool
 }
 
-func (c *requestContext) Log() otelzap.LoggerWithCtx {
+func (c *requestContext) Log() SlogWithCtx {
 	return c.log
 }
 
@@ -99,10 +119,10 @@ func deleteCookie(c echo.Context, cookie *http.Cookie) {
 	c.SetCookie(cookie)
 }
 
-func Middleware(log *otelzap.Logger, pool *pgxpool.Pool) echo.MiddlewareFunc {
+func Middleware(pool *pgxpool.Pool) echo.MiddlewareFunc {
 	return contextManipulatingMiddleware(func(c echo.Context) (context.Context, context.CancelFunc, error) {
 		ctx := c.Request().Context()
-		return withRequestContext(ctx, log, pool), nil, nil
+		return withRequestContext(ctx, pool), nil, nil
 	})
 }
 
@@ -123,7 +143,7 @@ func AuthenticatedMiddleware(conv *service.SessionJwtConverter) echo.MiddlewareF
 	}
 
 	onErr := func(c echo.Context, rctx RequestContext, cookie *http.Cookie, sessionId string, err error) error {
-		rctx.Log().Info("authenticated handler failed to retrieve session", zap.Error(err))
+		rctx.Log().Info("authenticated handler failed to retrieve session", slog.String("err", err.Error()))
 
 		if cookie != nil {
 			deleteCookie(c, cookie)
@@ -136,7 +156,7 @@ func AuthenticatedMiddleware(conv *service.SessionJwtConverter) echo.MiddlewareF
 			})
 
 			if err != nil {
-				rctx.Log().Warn("failed to delete existing session", zap.Error(err))
+				rctx.Log().Warn("failed to delete existing session", slog.String("err", err.Error()))
 			}
 		}
 
@@ -413,9 +433,12 @@ func wrapApiKeyAuthenticatedHandlerFunc(fn ApiKeyAuthenticatedHandlerFunc) echo.
 	})
 }
 
-func withRequestContext(ctx context.Context, log *otelzap.Logger, pool *pgxpool.Pool) context.Context {
+func withRequestContext(ctx context.Context, pool *pgxpool.Pool) context.Context {
 	return context.WithValue(ctx, requestContextKey{}, &requestContext{
-		log:  log.Ctx(ctx),
+		log: SlogWithCtx{
+			ctx: ctx,
+			log: slog.Default(),
+		},
 		pool: pool,
 	})
 }

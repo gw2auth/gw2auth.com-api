@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	sdklogs "github.com/agoda-com/opentelemetry-logs-go/sdk/logs"
 	"github.com/labstack/echo/v4"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"io"
@@ -16,7 +17,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	err := WithLocalTracing(ctx, func(ctx context.Context, tp *sdktrace.TracerProvider) error {
+	err := WithLocalTracing(ctx, func(ctx context.Context, tp *sdktrace.TracerProvider, lp *sdklogs.LoggerProvider) error {
 		return WithEchoServer(ctx, func(ctx context.Context, app *echo.Echo) error {
 			go func() {
 				<-ctx.Done()
@@ -28,7 +29,7 @@ func main() {
 			}()
 
 			return app.Start(":8090")
-		}, WithFlusher(tp))
+		}, WithFlusher(tp), WithFlusher(lp))
 	})
 
 	if err != nil {
