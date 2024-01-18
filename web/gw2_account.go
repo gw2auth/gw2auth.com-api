@@ -248,16 +248,16 @@ func UpdateGw2AccountEndpoint() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, errors.New("displayname must be between 1 and 100 characters"))
 		}
 
-		rctx.Log().Info(
+		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
 			"updating gw2account",
 			slog.String("accountId", session.AccountId.String()),
 			slog.String("gw2AccountId", gw2AccountId.String()),
 			slog.String("displayName", update.DisplayName),
 		)
 
-		ctx := c.Request().Context()
 		var rowsAffected int64
-
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `
 UPDATE gw2_accounts

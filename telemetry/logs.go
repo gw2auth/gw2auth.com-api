@@ -7,6 +7,7 @@ import (
 	"github.com/agoda-com/opentelemetry-logs-go/exporters/stdout/stdoutlogs"
 	sdklogs "github.com/agoda-com/opentelemetry-logs-go/sdk/logs"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
+	"log/slog"
 	"os"
 )
 
@@ -37,4 +38,8 @@ func NewLocalLoggerProvider(ctx context.Context, resource *sdkresource.Resource)
 	)
 
 	return lp, nil
+}
+
+func Error(err error) slog.Attr {
+	return slog.String("err", err.Error())
 }

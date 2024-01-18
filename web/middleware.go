@@ -9,6 +9,7 @@ import (
 	"github.com/gofrs/uuid/v5"
 	"github.com/gw2auth/gw2auth.com-api/service"
 	"github.com/gw2auth/gw2auth.com-api/service/auth"
+	"github.com/gw2auth/gw2auth.com-api/telemetry"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
@@ -31,39 +32,12 @@ type requestContextKey struct{}
 type sessionContextKey struct{}
 type applicationApiKeyContextKey struct{}
 
-type SlogWithCtx struct {
-	ctx context.Context
-	log *slog.Logger
-}
-
-func (s SlogWithCtx) Debug(msg string, args ...any) {
-	s.log.DebugContext(s.ctx, msg, args...)
-}
-
-func (s SlogWithCtx) Info(msg string, args ...any) {
-	s.log.InfoContext(s.ctx, msg, args...)
-}
-
-func (s SlogWithCtx) Warn(msg string, args ...any) {
-	s.log.WarnContext(s.ctx, msg, args...)
-}
-
-func (s SlogWithCtx) Error(msg string, args ...any) {
-	s.log.ErrorContext(s.ctx, msg, args...)
-}
-
 type RequestContext interface {
-	Log() SlogWithCtx
 	ExecuteTx(ctx context.Context, txOptions pgx.TxOptions, fn func(pgx.Tx) error) error
 }
 
 type requestContext struct {
-	log  SlogWithCtx
 	pool *pgxpool.Pool
-}
-
-func (c *requestContext) Log() SlogWithCtx {
-	return c.log
 }
 
 func (c *requestContext) ExecuteTx(ctx context.Context, txOptions pgx.TxOptions, fn func(pgx.Tx) error) error {
@@ -143,20 +117,20 @@ func AuthenticatedMiddleware(conv *service.SessionJwtConverter) echo.MiddlewareF
 	}
 
 	onErr := func(c echo.Context, rctx RequestContext, cookie *http.Cookie, sessionId string, err error) error {
-		rctx.Log().Info("authenticated handler failed to retrieve session", slog.String("err", err.Error()))
+		ctx := c.Request().Context()
+		slog.InfoContext(ctx, "authenticated handler failed to retrieve session", telemetry.Error(err))
 
 		if cookie != nil {
 			deleteCookie(c, cookie)
 		}
 
 		if sessionId != "" {
-			ctx := c.Request().Context()
 			err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 				return auth.DeleteSession(ctx, tx, sessionId)
 			})
 
 			if err != nil {
-				rctx.Log().Warn("failed to delete existing session", slog.String("err", err.Error()))
+				slog.WarnContext(ctx, "failed to delete existing session", telemetry.Error(err))
 			}
 		}
 
@@ -412,7 +386,7 @@ func wrapAuthenticatedHandlerFunc(fn AuthenticatedHandlerFunc) echo.HandlerFunc 
 		ctx := c.Request().Context()
 		session, ok := ctx.Value(sessionContextKey{}).(auth.Session)
 		if !ok {
-			rctx.Log().Warn("session not found in context on authenticated handler")
+			slog.WarnContext(ctx, "session not found in context on authenticated handler")
 			return echo.NewHTTPError(http.StatusInternalServerError, map[string]string{})
 		}
 
@@ -425,7 +399,7 @@ func wrapApiKeyAuthenticatedHandlerFunc(fn ApiKeyAuthenticatedHandlerFunc) echo.
 		ctx := c.Request().Context()
 		apiKey, ok := ctx.Value(applicationApiKeyContextKey{}).(auth.ApiKey)
 		if !ok {
-			rctx.Log().Warn("api key not found in context on authenticated handler")
+			slog.WarnContext(ctx, "api key not found in context on authenticated handler")
 			return echo.NewHTTPError(http.StatusInternalServerError, map[string]string{})
 		}
 
@@ -435,10 +409,6 @@ func wrapApiKeyAuthenticatedHandlerFunc(fn ApiKeyAuthenticatedHandlerFunc) echo.
 
 func withRequestContext(ctx context.Context, pool *pgxpool.Pool) context.Context {
 	return context.WithValue(ctx, requestContextKey{}, &requestContext{
-		log: SlogWithCtx{
-			ctx: ctx,
-			log: slog.Default(),
-		},
 		pool: pool,
 	})
 }
