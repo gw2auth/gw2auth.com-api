@@ -5,9 +5,8 @@ package main
 import (
 	"context"
 	"fmt"
-	sdklogs "github.com/agoda-com/opentelemetry-logs-go/sdk/logs"
+	"github.com/gw2auth/gw2auth.com-api/telemetry"
 	"github.com/labstack/echo/v4"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"io"
 	"os"
 	"os/signal"
@@ -17,20 +16,27 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	err := WithLocalTracing(ctx, func(ctx context.Context, tp *sdktrace.TracerProvider, lp *sdklogs.LoggerProvider) error {
-		return WithEchoServer(ctx, func(ctx context.Context, app *echo.Echo) error {
-			go func() {
-				<-ctx.Done()
-				if err := app.Shutdown(context.Background()); err != nil {
-					fmt.Printf("error shutting down echo server: %v\n", err)
-				} else {
-					fmt.Println("shutdown complete")
-				}
-			}()
+	err := WithTelemetry(
+		ctx,
+		"GW2AuthAPILambda",
+		func(ctx context.Context, t *telemetry.Telemetry) error {
+			return WithEchoServer(ctx, func(ctx context.Context, app *echo.Echo) error {
+				go func() {
+					<-ctx.Done()
+					if err := app.Shutdown(context.Background()); err != nil {
+						fmt.Printf("error shutting down echo server: %v\n", err)
+					} else {
+						fmt.Println("shutdown complete")
+					}
+				}()
 
-			return app.Start(":8090")
-		}, WithFlusher(tp), WithFlusher(lp))
-	})
+				return app.Start(":8090")
+			}, WithFlusher(t))
+		},
+		telemetry.WithResource(telemetry.NewLocalResource),
+		telemetry.WithTracerProvider(telemetry.NewLocalTracerProvider),
+		telemetry.WithLoggerProvider(telemetry.NewLocalLoggerProvider),
+	)
 
 	if err != nil {
 		panic(err)

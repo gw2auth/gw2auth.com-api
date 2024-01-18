@@ -5,29 +5,36 @@ package main
 import (
 	"context"
 	"encoding/json"
-	sdklogs "github.com/agoda-com/opentelemetry-logs-go/sdk/logs"
 	"github.com/aws/aws-lambda-go/lambda"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/gw2auth/gw2auth.com-api/telemetry"
 	"github.com/its-felix/aws-lambda-go-http-adapter/adapter"
 	"github.com/its-felix/aws-lambda-go-http-adapter/handler"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-lambda-go/otellambda"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"os"
 )
 
 func main() {
 	ctx := context.Background()
-	err := WithFunctionURLTracing(ctx, "GW2AuthAPILambda", func(ctx context.Context, tp *sdktrace.TracerProvider, lp *sdklogs.LoggerProvider) error {
-		return WithEchoServer(ctx, func(ctx context.Context, app *echo.Echo) error {
-			h := handler.NewFunctionURLStreamingHandler(adapter.NewEchoAdapter(app))
-			lambda.Start(otellambda.InstrumentHandler(h, otellambda.WithTracerProvider(tp), otellambda.WithFlusher(tp)))
 
-			return nil
-		}, WithFlusher(tp), WithFlusher(lp))
-	})
+	err := WithTelemetry(
+		ctx,
+		"GW2AuthAPILambda",
+		func(ctx context.Context, t *telemetry.Telemetry) error {
+			return WithEchoServer(ctx, func(ctx context.Context, app *echo.Echo) error {
+				h := handler.NewFunctionURLStreamingHandler(adapter.NewEchoAdapter(app))
+				lambda.Start(otellambda.InstrumentHandler(h, otellambda.WithTracerProvider(t.TracerProvider()), otellambda.WithFlusher(t)))
+
+				return nil
+			}, WithFlusher(t))
+		},
+		telemetry.WithResource(telemetry.NewLambdaResource),
+		telemetry.WithTracerProvider(telemetry.NewLambdaTracerProvider),
+		telemetry.WithLoggerProvider(telemetry.NewLambdaLoggerProvider),
+	)
 
 	if err != nil {
 		panic(err)
