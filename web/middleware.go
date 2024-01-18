@@ -187,6 +187,7 @@ func AuthenticatedMiddleware(conv *service.SessionJwtConverter) echo.MiddlewareF
 
 		// this cookie should no longer be persisted if the request is already authenticated
 		if cookie, err := c.Cookie("REDIRECT_URI"); err == nil {
+			slog.InfoContext(ctx, "REDIRECT_URI cookie was present on authenticated request, deleting", slog.String("cookie.name", "REDIRECT_URI"))
 			deleteCookie(c, cookie)
 		}
 
@@ -354,8 +355,11 @@ func CSRFMiddleware() echo.MiddlewareFunc {
 func DeleteHistoricalCookiesMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			ctx := c.Request().Context()
+
 			for _, name := range []string{"cookieconsent_status", "JSESSIONID"} {
 				if cookie, err := c.Cookie(name); err == nil {
+					slog.InfoContext(ctx, "historical cookie was present on request, deleting", slog.String("cookie.name", name))
 					deleteCookie(c, cookie)
 				}
 			}

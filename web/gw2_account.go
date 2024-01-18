@@ -252,9 +252,8 @@ func UpdateGw2AccountEndpoint() echo.HandlerFunc {
 		slog.InfoContext(
 			ctx,
 			"updating gw2account",
-			slog.String("accountId", session.AccountId.String()),
-			slog.String("gw2AccountId", gw2AccountId.String()),
-			slog.String("displayName", update.DisplayName),
+			slog.String("gw2account.id", gw2AccountId.String()),
+			slog.String("gw2account.display_name", update.DisplayName),
 		)
 
 		var rowsAffected int64

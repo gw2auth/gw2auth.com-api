@@ -13,6 +13,7 @@ import (
 	"github.com/its-felix/shine"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -85,6 +86,16 @@ func AddOrUpdateApiTokenEndpoint(gw2ApiClient *gw2.ApiClient) echo.HandlerFunc {
 
 		isVerifiedAdd := expectAdd && verifyTokenName(tokenInfo.Name, session.Id)
 		gw2ApiPermissionsBitSet := gw2.PermissionsToBitSet(tokenInfo.Permissions)
+
+		slog.InfoContext(
+			ctx,
+			"api token is being added or updated",
+			slog.String("gw2account.id", gw2Acc.Id.String()),
+			slog.String("gw2account.name", gw2Acc.Name),
+			slog.String("gw2account.token.name", tokenInfo.Name),
+			slog.Any("gw2account.token.permissions", tokenInfo.Permissions),
+			slog.Bool("is_verified_add", isVerifiedAdd),
+		)
 
 		creationTime := time.Now()
 		err := rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -212,6 +223,12 @@ func DeleteApiTokenEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"deleting api token",
+			slog.String("gw2account.id", gw2AccountId.String()),
+		)
+
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `
 DELETE FROM gw2_account_api_tokens
@@ -232,8 +249,11 @@ AND gw2_account_id = $2
 
 func ApiTokenVerificationEndpoint() echo.HandlerFunc {
 	return wrapAuthenticatedHandlerFunc(func(c echo.Context, rctx RequestContext, session auth.Session) error {
+		name := verificationTokenNameForSession(session.Id)
+		slog.InfoContext(c.Request().Context(), "generated new verification token name", slog.String("verification_token_name", name))
+
 		return c.JSON(http.StatusOK, map[string]string{
-			"tokenName": verificationTokenNameForSession(session.Id),
+			"tokenName": name,
 		})
 	})
 }

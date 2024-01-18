@@ -10,6 +10,7 @@ import (
 	"github.com/gw2auth/gw2auth.com-api/util"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -94,6 +95,14 @@ func CreateDevApplicationClientEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"creating new application client",
+			slog.String("application.id", applicationId.String()),
+			slog.String("application.client.id", applicationClientId.String()),
+			slog.String("application.client.name", body.DisplayName),
+		)
+
 		var created bool
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `
@@ -168,6 +177,13 @@ func DevApplicationClientEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"deleting application client",
+			slog.String("application.id", applicationId.String()),
+			slog.String("application.client.id", clientId.String()),
+		)
+
 		var result devApplicationClient
 		err := rctx.ExecuteTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 			const sql = `
@@ -223,6 +239,12 @@ func RegenerateDevApplicationClientSecretEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"regenerating client secret for client",
+			slog.String("application.id", applicationId.String()),
+			slog.String("application.client.id", clientId.String()),
+		)
 
 		var updated bool
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -288,6 +310,14 @@ func UpdateDevApplicationClientRedirectURIsEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"updating redirect uris for client",
+			slog.String("application.id", applicationId.String()),
+			slog.String("application.client.id", clientId.String()),
+			slog.Any("application.client.redirect_uris", redirectURIs),
+		)
+
 		var prevRedirectURIs, newRedirectURIs []string
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `
@@ -336,6 +366,12 @@ func DeleteDevApplicationClientEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"deleting application client",
+			slog.String("application.id", applicationId.String()),
+			slog.String("application.client.id", clientId.String()),
+		)
 
 		var deleted bool
 		err := rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -391,6 +427,14 @@ func UpdateDevApplicationClientUserEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"updating application client user",
+			slog.String("application.id", applicationId.String()),
+			slog.String("application.client.id", clientId.String()),
+			slog.String("application.user.id", userId.String()),
+			slog.String("application.client.user.status", update.ApprovalStatus),
+		)
 
 		var updated bool
 		err := rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {

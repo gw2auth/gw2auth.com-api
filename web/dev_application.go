@@ -13,6 +13,7 @@ import (
 	"github.com/gw2auth/gw2auth.com-api/util"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -112,6 +113,13 @@ func CreateDevApplicationEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"creating new application",
+			slog.String("application.id", applicationId.String()),
+			slog.String("application.name", body.DisplayName),
+		)
+
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `
 INSERT INTO applications
@@ -141,6 +149,11 @@ func DeleteDevApplicationEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"deleting application",
+			slog.String("application.id", applicationId.String()),
+		)
 
 		var deleted bool
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
@@ -432,6 +445,14 @@ func CreateDevApplicationAPIKeyEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"creating new application api key",
+			slog.String("application.id", applicationId.String()),
+			slog.String("application.api_key.id", apiKeyId.String()),
+			slog.Any("application.api_key.permissions", body.Permissions),
+		)
+
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `
 INSERT INTO application_api_keys
@@ -468,6 +489,13 @@ func DeleteDevApplicationAPIKeyEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"deleting application api key",
+			slog.String("application.id", applicationId.String()),
+			slog.String("application.api_key.id", keyId.String()),
+		)
+
 		var deleted bool
 		err := rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `

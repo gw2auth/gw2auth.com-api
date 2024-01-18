@@ -6,6 +6,7 @@ import (
 	"github.com/gw2auth/gw2auth.com-api/util"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -176,6 +177,12 @@ func DeleteUserApplicationEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"deleting user application (revoke access)",
+			slog.String("application.id", applicationId.String()),
+		)
+
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `
 DELETE FROM application_accounts

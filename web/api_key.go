@@ -7,6 +7,7 @@ import (
 	"github.com/gw2auth/gw2auth.com-api/util"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"log/slog"
 	"net/http"
 	"slices"
 )
@@ -39,6 +40,13 @@ func ModifyDevApplicationClientRedirectURIsEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"modifying application client redirect URIs via api key",
+			slog.Any("client.redirect_uri.add", body.Add),
+			slog.Any("client.redirect_uri.remove", body.Remove),
+		)
+
 		var prevRedirectURIs, newRedirectURIs []string
 		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `

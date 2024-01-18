@@ -6,6 +6,7 @@ import (
 	"github.com/gw2auth/gw2auth.com-api/util"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -110,6 +111,13 @@ func DeleteAccountFederationEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"deleting account federation",
+			slog.String("federation.issuer", issuer),
+			slog.String("federation.id_at_issuer", idAtIssuer),
+		)
+
 		var found bool
 		err := rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `
@@ -148,6 +156,12 @@ func DeleteAccountFederationSessionEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
+		slog.InfoContext(
+			ctx,
+			"deleting account federation session",
+			slog.String("session.id", sessionId),
+		)
+
 		var found bool
 		err := rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = `
