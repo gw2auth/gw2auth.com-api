@@ -563,10 +563,17 @@ func translateQuery(paramNum int, query cloudscapeQuery) (string, []any, error) 
 		}
 
 		if prop == "app_accounts.creation_time" && tk.Operator == "=" {
-			builder.Add(tk.Value, func(i int) string {
+			tStart, err := time.ParseInLocation(time.DateOnly, tk.Value, time.UTC)
+			if err != nil {
+				return "", nil, errors.New("invalid date")
+			}
+
+			tEnd := tStart.Add(time.Hour * 24)
+
+			builder.AddSlice([]any{tStart, tEnd}, func(ints []int) string {
 				return util.SQLOpAND(
-					util.SQLBinOpGTE(prop, util.SQLParam(i)),
-					util.SQLBinOpLTE(prop, util.SQLParam(i)),
+					util.SQLBinOpGTE(prop, util.SQLParam(ints[0])),
+					util.SQLBinOpLT(prop, util.SQLParam(ints[1])),
 				)
 			})
 		} else {

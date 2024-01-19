@@ -47,8 +47,9 @@ func NewSQLBuilder(offset int) *SQLBuilder {
 }
 
 func (b *SQLBuilder) Add(v any, expr func(int) string) {
-	b.expr = append(b.expr, expr(b.offset+len(b.params)))
+	idx := b.offset + len(b.params)
 	b.params = append(b.params, v)
+	b.expr = append(b.expr, expr(idx))
 }
 
 func (b *SQLBuilder) AddSlice(v []any, expr func([]int) string) {
