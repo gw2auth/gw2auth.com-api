@@ -281,10 +281,15 @@ func verifyTokenName(name, sessionId string) bool {
 
 	buf := bytes.NewBuffer(b)
 
-	hourSinceEpoch := time.Duration(binary.BigEndian.Uint32(buf.Next(4)))
-	ts := time.Date(1970, time.January, 1, 0, 0, 0, 0, time.UTC).Add(hourSinceEpoch * time.Hour)
-	now := time.Now()
+	// this check can be removed 6hrs after being deployed to prod
+	var ts time.Time
+	if timeSinceEpoch := time.Duration(binary.BigEndian.Uint32(buf.Next(4))); timeSinceEpoch >= 400000 && timeSinceEpoch < 500000 {
+		ts = util.UnixZero().Add(timeSinceEpoch * time.Hour)
+	} else {
+		ts = util.UnixZero().Add(timeSinceEpoch * time.Minute)
+	}
 
+	now := time.Now()
 	if now.Before(ts) || now.Sub(ts) >= (time.Hour*6) {
 		return false
 	}
@@ -297,8 +302,8 @@ func verificationTokenNameForSession(sessionId string) string {
 	// 4 bytes for time, 16 bytes for hash
 	b := make([]byte, 0, 20)
 
-	hoursSinceEpoch := uint32(time.Since(time.Date(1970, time.January, 1, 0, 0, 0, 0, time.UTC)) / time.Hour)
-	b = binary.BigEndian.AppendUint32(b, hoursSinceEpoch)
+	minutesSinceEpoch := uint32(time.Since(util.UnixZero()) / time.Minute)
+	b = binary.BigEndian.AppendUint32(b, minutesSinceEpoch)
 
 	hash := sha256.Sum256([]byte(sessionId))
 	b = append(b, hash[:16]...)
