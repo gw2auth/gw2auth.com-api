@@ -5,26 +5,28 @@ import (
 	"strconv"
 )
 
-type SQLBinOp func(lhs, rhs string) string
+type SQLOp func(lhs, rhs string) string
 
 var (
-	SQLBinOpEQ          = simpleBinOp("=")
-	SQLBinOpNEQ         = simpleBinOp("!=")
-	SQLBinOpGT          = simpleBinOp(">")
-	SQLBinOpGTE         = simpleBinOp(">=")
-	SQLBinOpLT          = simpleBinOp("<")
-	SQLBinOpLTE         = simpleBinOp("<=")
-	SQLBinOpContains    = simpleBinOp("&&")
+	SQLOpAND            = simpleOp("AND")
+	SQLOpOR             = simpleOp("OR")
+	SQLBinOpEQ          = simpleOp("=")
+	SQLBinOpNEQ         = simpleOp("!=")
+	SQLBinOpGT          = simpleOp(">")
+	SQLBinOpGTE         = simpleOp(">=")
+	SQLBinOpLT          = simpleOp("<")
+	SQLBinOpLTE         = simpleOp("<=")
+	SQLBinOpContains    = simpleOp("&&")
 	SQLBinOpNotContains = SQLBinOpContains.Neg()
 )
 
-func (op SQLBinOp) Neg() SQLBinOp {
+func (op SQLOp) Neg() SQLOp {
 	return func(lhs, rhs string) string {
 		return fmt.Sprintf("NOT (%s)", op(lhs, rhs))
 	}
 }
 
-func simpleBinOp(op string) SQLBinOp {
+func simpleOp(op string) SQLOp {
 	return func(lhs, rhs string) string {
 		return fmt.Sprintf("%s %s %s", lhs, op, rhs)
 	}

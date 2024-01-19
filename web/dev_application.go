@@ -543,7 +543,7 @@ func translateQuery(paramNum int, query cloudscapeQuery) (string, []any, error) 
 		"and": "AND",
 		"or":  "OR",
 	}
-	operatorToSQL := map[string]util.SQLBinOp{
+	operatorToSQL := map[string]util.SQLOp{
 		"=":  util.SQLBinOpEQ,
 		"!=": util.SQLBinOpNEQ,
 		">":  util.SQLBinOpGT,
@@ -562,23 +562,32 @@ func translateQuery(paramNum int, query cloudscapeQuery) (string, []any, error) 
 			return "", nil, errors.New("invalid property")
 		}
 
-		op, ok := operatorToSQL[tk.Operator]
-		if !ok {
-			return "", nil, errors.New("invalid operator")
-		}
-
-		value := any(tk.Value)
-		if tk.PropertyKey == "authorized_scopes" {
-			if tk.Value == "" {
-				value = []string{}
-			} else {
-				value = strings.Split(tk.Value, ",")
+		if prop == "app_accounts.creation_time" && tk.Operator == "=" {
+			builder.Add(tk.Value, func(i int) string {
+				return util.SQLOpAND(
+					util.SQLBinOpGTE(prop, util.SQLParam(i)),
+					util.SQLBinOpLTE(prop, util.SQLParam(i)),
+				)
+			})
+		} else {
+			op, ok := operatorToSQL[tk.Operator]
+			if !ok {
+				return "", nil, errors.New("invalid operator")
 			}
-		}
 
-		builder.Add(value, func(i int) string {
-			return op(prop, util.SQLParam(i))
-		})
+			value := any(tk.Value)
+			if tk.PropertyKey == "authorized_scopes" {
+				if tk.Value == "" {
+					value = []string{}
+				} else {
+					value = strings.Split(tk.Value, ",")
+				}
+			}
+
+			builder.Add(value, func(i int) string {
+				return op(prop, util.SQLParam(i))
+			})
+		}
 	}
 
 	operation, ok := operationToSQL[query.Operation]
