@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	crdbpgx "github.com/cockroachdb/cockroach-go/v2/crdb/crdbpgxv5"
 	"github.com/gofrs/uuid/v5"
 	"github.com/gw2auth/gw2auth.com-api/service"
@@ -85,10 +86,11 @@ func isSecure(c echo.Context) bool {
 
 func deleteCookie(c echo.Context, cookie *http.Cookie) {
 	cookie = &http.Cookie{
-		Name:   cookie.Name,
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
+		Name:     cookie.Name,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: cookie.HttpOnly,
 	}
 	c.SetCookie(cookie)
 }
@@ -187,7 +189,12 @@ func AuthenticatedMiddleware(conv *service.SessionJwtConverter) echo.MiddlewareF
 
 		// this cookie should no longer be persisted if the request is already authenticated
 		if cookie, err := c.Cookie("REDIRECT_URI"); err == nil {
-			slog.InfoContext(ctx, "REDIRECT_URI cookie was present on authenticated request, deleting", slog.String("cookie.name", "REDIRECT_URI"))
+			ua := c.Request().UserAgent()
+			slog.InfoContext(
+				ctx,
+				fmt.Sprintf("REDIRECT_URI cookie was present on authenticated request, deleting (ua: %s)", ua),
+				slog.String("cookie.name", "REDIRECT_URI"),
+			)
 			deleteCookie(c, cookie)
 		}
 
