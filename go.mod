@@ -13,7 +13,7 @@ require (
 	github.com/gofrs/uuid/v5 v5.0.0
 	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/its-felix/aws-lambda-go-http-adapter v0.5.0
-	github.com/its-felix/shine v0.2.0
+	github.com/its-felix/shine v1.2.0
 	github.com/jackc/pgx-gofrs-uuid v0.0.0-20230224015001-1d428863c2e2
 	github.com/jackc/pgx/v5 v5.5.1
 	github.com/labstack/echo/v4 v4.11.4

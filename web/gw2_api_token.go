@@ -54,8 +54,8 @@ func AddOrUpdateApiTokenEndpoint(gw2ApiClient *gw2.ApiClient) echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, "the apitoken is invalid")
 		}
 
-		chAccount := make(chan shine.Result[gw2.Account], 1)
-		chTokenInfo := make(chan shine.Result[gw2.TokenInfo], 1)
+		chAccount := make(chan shine.Result[gw2.Account, error], 1)
+		chTokenInfo := make(chan shine.Result[gw2.TokenInfo, error], 1)
 
 		ctx := c.Request().Context()
 		go func() {
