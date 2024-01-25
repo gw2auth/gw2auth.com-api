@@ -177,13 +177,6 @@ func DevApplicationClientEndpoint() echo.HandlerFunc {
 		}
 
 		ctx := c.Request().Context()
-		slog.InfoContext(
-			ctx,
-			"deleting application client",
-			slog.String("application.id", applicationId.String()),
-			slog.String("application.client.id", clientId.String()),
-		)
-
 		var result devApplicationClient
 		err := rctx.ExecuteTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 			const sql = `
