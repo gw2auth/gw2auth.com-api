@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
@@ -10,9 +11,9 @@ import (
 	"github.com/gw2auth/gw2auth.com-api/service/auth"
 	"github.com/gw2auth/gw2auth.com-api/service/gw2"
 	"github.com/gw2auth/gw2auth.com-api/util"
-	"github.com/its-felix/shine"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -54,30 +55,15 @@ func AddOrUpdateApiTokenEndpoint(gw2ApiClient *gw2.ApiClient) echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, "the apitoken is invalid")
 		}
 
-		chAccount := make(chan shine.Result[gw2.Account, error], 1)
-		chTokenInfo := make(chan shine.Result[gw2.TokenInfo, error], 1)
+		var gw2Acc gw2.Account
+		var tokenInfo gw2.TokenInfo
 
 		ctx := c.Request().Context()
-		go func() {
-			defer close(chAccount)
-			chAccount <- shine.NewResult(gw2ApiClient.Account(ctx, body.ApiToken))
-		}()
-
-		go func() {
-			defer close(chTokenInfo)
-			chTokenInfo <- shine.NewResult(gw2ApiClient.TokenInfo(ctx, body.ApiToken))
-		}()
-
-		resAccount, resTokenInfo := <-chAccount, <-chTokenInfo
-		if resAccount.IsErr() {
-			return resAccount.Err().Map(httpErrorForGw2ApiError).Unwrap()
+		gw2Acc, tokenInfo, err := accountAndTokenInfo(ctx, gw2ApiClient, body.ApiToken)
+		if err != nil {
+			return httpErrorForGw2ApiError(err)
 		}
 
-		if resTokenInfo.IsErr() {
-			return resTokenInfo.Err().Map(httpErrorForGw2ApiError).Unwrap()
-		}
-
-		gw2Acc, tokenInfo := resAccount.Unwrap(), resTokenInfo.Unwrap()
 		if !expectGw2AccountId.IsNil() && expectGw2AccountId != gw2Acc.Id {
 			return echo.NewHTTPError(http.StatusBadRequest, "the provided apitoken does not belong to the expected gw2account")
 		} else if !slices.Contains(tokenInfo.Permissions, gw2.PermissionAccount) {
@@ -98,7 +84,7 @@ func AddOrUpdateApiTokenEndpoint(gw2ApiClient *gw2.ApiClient) echo.HandlerFunc {
 		)
 
 		creationTime := time.Now()
-		err := rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
+		err = rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			sql := `
 SELECT
 	(
@@ -256,6 +242,26 @@ func ApiTokenVerificationEndpoint() echo.HandlerFunc {
 			"tokenName": name,
 		})
 	})
+}
+
+func accountAndTokenInfo(ctx context.Context, client *gw2.ApiClient, token string) (gw2.Account, gw2.TokenInfo, error) {
+	var gw2Acc gw2.Account
+	var tokenInfo gw2.TokenInfo
+
+	group, ctx := errgroup.WithContext(ctx)
+	group.Go(func() error {
+		var err error
+		gw2Acc, err = client.Account(ctx, token)
+		return err
+	})
+
+	group.Go(func() error {
+		var err error
+		tokenInfo, err = client.TokenInfo(ctx, token)
+		return err
+	})
+
+	return gw2Acc, tokenInfo, group.Wait()
 }
 
 func httpErrorForGw2ApiError(err error) error {
