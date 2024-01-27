@@ -113,7 +113,7 @@ func AuthenticatedMiddleware(conv *service.SessionJwtConverter) echo.MiddlewareF
 			Expires:  exp,
 			Secure:   cookie.Secure || isSecure(c),
 			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
+			SameSite: http.SameSiteLaxMode,
 		}
 		c.SetCookie(cookie)
 	}
