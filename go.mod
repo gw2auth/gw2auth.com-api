@@ -14,7 +14,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/its-felix/aws-lambda-go-http-adapter v0.6.0
 	github.com/jackc/pgx-gofrs-uuid v0.0.0-20230224015001-1d428863c2e2
-	github.com/jackc/pgx/v5 v5.5.3
+	github.com/jackc/pgx/v5 v5.5.2
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/stretchr/testify v1.9.0
 	go.opentelemetry.io/contrib/detectors/aws/lambda v0.49.0
