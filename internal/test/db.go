@@ -44,7 +44,7 @@ func (s *Scope) getOrCreateConfig() (*pgxpool.Config, error) {
 	defer s.mutex.Unlock()
 
 	if pTs := s.ts.Load(); pTs == nil {
-		ts, err := testserver.NewTestServer(testserver.CustomVersionOpt("v23.1.14"))
+		ts, err := testserver.NewTestServer(testserver.CustomVersionOpt("v23.2.3"))
 		if err != nil {
 			return nil, err
 		}
