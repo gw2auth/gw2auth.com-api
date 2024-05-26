@@ -45,6 +45,13 @@ SELECT
 			return util.NewEchoPgxHTTPError(err)
 		}
 
+		res.Accounts -= res.Accounts % 50
+		res.ApiTokens -= res.ApiTokens % 50
+		res.AccVerifications -= res.AccVerifications % 50
+		res.Apps -= res.Apps % 5
+		res.AppClients -= res.AppClients % 5
+		res.AppClientAccs -= res.AppClientAccs % 50
+
 		return c.JSON(http.StatusOK, res)
 	})
 }
