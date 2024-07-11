@@ -2,6 +2,8 @@ package web
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"github.com/gofrs/uuid/v5"
@@ -491,6 +493,13 @@ func preprocessRedirectURIs(applicationId, clientId uuid.UUID, redirectURIs []st
 func validateRedirectURIs(redirectURIs []string) error {
 	var err error
 	for _, redirectURI := range redirectURIs {
+		originalRedirectURI := redirectURI
+		if strings.ContainsRune(redirectURI, '*') {
+			hashBytes := sha256.Sum256([]byte(redirectURI))
+			hash := base64.RawURLEncoding.EncodeToString(hashBytes[:])
+			redirectURI = strings.ReplaceAll(redirectURI, "*", "a"+hash+"z") // surround with "a" and "z" to ensure valid hostnames
+		}
+
 		u, parseErr := url.Parse(redirectURI)
 		if parseErr != nil {
 			err = errors.Join(err, parseErr)
@@ -503,6 +512,12 @@ func validateRedirectURIs(redirectURIs []string) error {
 			err = errors.Join(err, errors.New("localhost is not allowed"))
 		} else if u.Hostname() == "" {
 			err = errors.Join(err, errors.New("invalid hostname"))
+		}
+
+		if redirectURI != originalRedirectURI {
+			if !util.URLMatch(originalRedirectURI, u) {
+				err = errors.Join(err, errors.New("invalid pattern"))
+			}
 		}
 	}
 
