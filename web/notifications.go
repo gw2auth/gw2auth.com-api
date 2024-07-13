@@ -72,7 +72,7 @@ func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
 
 		var endpointsWithIssues []string
 		for _, element := range gw2EffStatus.Data {
-			if slices.Contains(relevantEndpoints, element.Name) && (element.Status != http.StatusOK || element.Error || element.Duration >= 3000) {
+			if slices.Contains(relevantEndpoints, element.Name) && (element.Status != http.StatusOK || element.Error || element.Duration >= 15_000) {
 				endpointsWithIssues = append(endpointsWithIssues, element.Name)
 			}
 		}
