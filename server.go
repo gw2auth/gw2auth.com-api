@@ -77,11 +77,11 @@ func newHttpClient() *http.Client {
 	}
 }
 
-func newGw2ApiClient() *gw2.ApiClient {
-	return gw2.NewApiClient(newHttpClient(), "https://api.guildwars2.com")
+func newGw2ApiClient(httpClient *http.Client) *gw2.ApiClient {
+	return gw2.NewApiClient(httpClient, "https://api.guildwars2.com")
 }
 
-func newEchoServer(pool *pgxpool.Pool, gw2ApiClient *gw2.ApiClient, conv *service.SessionJwtConverter, options ...Option) *echo.Echo {
+func newEchoServer(pool *pgxpool.Pool, httpClient *http.Client, gw2ApiClient *gw2.ApiClient, conv *service.SessionJwtConverter, options ...Option) *echo.Echo {
 	app := echo.New()
 
 	for _, opt := range options {
@@ -136,6 +136,8 @@ func newEchoServer(pool *pgxpool.Pool, gw2ApiClient *gw2.ApiClient, conv *servic
 	uiGroup.PATCH("/dev/application/:app_id/client/:client_id/user/:user_id", web.UpdateDevApplicationClientUserEndpoint(), authMw)
 	uiGroup.PUT("/dev/application/:id/apikey", web.CreateDevApplicationAPIKeyEndpoint(), authMw)
 	uiGroup.DELETE("/dev/application/:app_id/apikey/:key_id", web.DeleteDevApplicationAPIKeyEndpoint(), authMw)
+
+	uiGroup.GET("/notifications", web.NotificationsEndpoint(httpClient))
 	// endregion
 
 	// region application api
@@ -157,7 +159,8 @@ func WithEchoServer(ctx context.Context, fn func(ctx context.Context, app *echo.
 
 	return withPgx(secrets, func(pool *pgxpool.Pool) error {
 		return withConv(secrets, func(conv *service.SessionJwtConverter) error {
-			return fn(ctx, newEchoServer(pool, newGw2ApiClient(), conv, options...))
+			httpClient := newHttpClient()
+			return fn(ctx, newEchoServer(pool, httpClient, newGw2ApiClient(httpClient), conv, options...))
 		})
 	})
 }
