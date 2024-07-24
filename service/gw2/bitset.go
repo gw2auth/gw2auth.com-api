@@ -1,6 +1,7 @@
 package gw2
 
-var nthBitConversion = [10]Permission{
+// positions must not be re-arranged!
+var nthBitConversion = [11]Permission{
 	PermissionAccount,
 	PermissionBuilds,
 	PermissionCharacters,
@@ -11,6 +12,7 @@ var nthBitConversion = [10]Permission{
 	PermissionTradingpost,
 	PermissionUnlocks,
 	PermissionWallet,
+	PermissionWvw,
 }
 
 func PermissionsFromBitSet(bitSet int32) []Permission {

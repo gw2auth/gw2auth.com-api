@@ -12,6 +12,7 @@ const (
 	PermissionInventories Permission = "inventories"
 	PermissionProgression Permission = "progression"
 	PermissionPvp         Permission = "pvp"
+	PermissionWvw         Permission = "wvw"
 	PermissionTradingpost Permission = "tradingpost"
 	PermissionUnlocks     Permission = "unlocks"
 	PermissionWallet      Permission = "wallet"
