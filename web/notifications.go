@@ -8,16 +8,29 @@ import (
 	"time"
 )
 
+type gw2EffApiStatusElement struct {
+	Name     string `json:"name"`
+	Status   int    `json:"status"`
+	Duration int    `json:"duration"`
+	Error    any    `json:"error"`
+}
+
+func (e gw2EffApiStatusElement) CheckError() bool {
+	switch v := e.Error.(type) {
+	case bool:
+		return v
+
+	case string:
+		return v != ""
+
+	default:
+		return false
+	}
+}
+
 type gw2EffApiStatusResponse struct {
-	Data []struct {
-		Name        string `json:"name"`
-		Url         string `json:"url"`
-		Status      int    `json:"status"`
-		Duration    int    `json:"duration"`
-		Error       bool   `json:"error"`
-		SchemaValid bool   `json:"schemaValid"`
-	} `json:"data"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Data      []gw2EffApiStatusElement `json:"data"`
+	UpdatedAt time.Time                `json:"updated_at"`
 }
 
 type notificationType string
@@ -72,7 +85,7 @@ func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
 
 		var endpointsWithIssues []string
 		for _, element := range gw2EffStatus.Data {
-			if slices.Contains(relevantEndpoints, element.Name) && (element.Status != http.StatusOK || element.Error || element.Duration >= 15_000) {
+			if slices.Contains(relevantEndpoints, element.Name) && (element.Status != http.StatusOK || element.CheckError() || element.Duration >= 15_000) {
 				endpointsWithIssues = append(endpointsWithIssues, element.Name)
 			}
 		}
