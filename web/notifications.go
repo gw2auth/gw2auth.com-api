@@ -50,6 +50,7 @@ type notification struct {
 }
 
 func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
+	apiDowntimeStart := time.Unix(1723827600, 0)
 	relevantEndpoints := []string{
 		"/v2/tokeninfo",
 		"/v2/account",
@@ -101,6 +102,21 @@ func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
 			}
 		} else {
 			notifications = make([]notification, 0)
+		}
+
+		now := time.Now()
+		if now.After(apiDowntimeStart) {
+			notifications = append(notifications, notification{
+				Type:    notificationTypeInfo,
+				Header:  "The Guild Wars 2 API is temporarily disabled",
+				Content: "The official Guild Wars 2 API is temporarily disabled until about a few days after the release of Janthir Wilds. During this time, it will not be possible to add new API Tokens or verify your accounts.",
+			})
+		} else if timeUntilDowntime := apiDowntimeStart.Sub(now); timeUntilDowntime <= (time.Hour * 24 * 3) {
+			notifications = append(notifications, notification{
+				Type:    notificationTypeInfo,
+				Header:  "The Guild Wars 2 API will be temporarily disabled shortly",
+				Content: "The official Guild Wars 2 API will be temporarily disabled in preparation for the release of Janthir Wilds. It will be kept disabled until about a few days after the release of Janthir Wilds. During this time, it will not be possible to add new API Tokens or verify your accounts.",
+			})
 		}
 
 		return c.JSON(http.StatusOK, notifications)
