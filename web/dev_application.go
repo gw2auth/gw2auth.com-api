@@ -287,6 +287,9 @@ GROUP BY app.id
 func DevApplicationUsersEndpoint() echo.HandlerFunc {
 	const defaultPageSize = 50
 
+	// keep in sync with predefined query parameters
+	const firstAdditionalParamIdx = 5
+
 	return wrapAuthenticatedHandlerFunc(func(c echo.Context, rctx RequestContext, session auth.Session) error {
 		applicationId, err := uuid.FromString(c.Param("id"))
 		if err != nil {
@@ -302,9 +305,7 @@ func DevApplicationUsersEndpoint() echo.HandlerFunc {
 				return echo.NewHTTPError(http.StatusBadRequest, err)
 			}
 
-			// keep in sync with predefined query parameters
-			const paramNum = 5
-			if sql, params, err := translateQuery(paramNum, query); err != nil {
+			if sql, params, err := translateQuery(firstAdditionalParamIdx, query); err != nil {
 				return echo.NewHTTPError(http.StatusBadRequest, err)
 			} else {
 				additionalSQL = sql
@@ -364,6 +365,11 @@ AND apps.account_id = $2
 
 			params := make([]any, 0, 4+len(additionalParams))
 			params = append(params, applicationId, session.AccountId, offset, pageSize)
+			if len(params)+1 != firstAdditionalParamIdx {
+				// should never happen, just a safety measure to prevent additional params from overlapping with predefined ones
+				return errors.New("something went wrong, please contact a developer")
+			}
+
 			params = append(params, additionalParams...)
 
 			rows, err := tx.Query(ctx, sql, params...)
