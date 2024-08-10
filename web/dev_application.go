@@ -362,7 +362,8 @@ AND apps.account_id = $2
 `
 			sql += fmt.Sprintf("AND ( %s ) OFFSET $3 LIMIT ($4 + 1)", additionalSQL)
 
-			params := []any{applicationId, session.AccountId, offset, pageSize}
+			params := make([]any, 0, 4+len(additionalParams))
+			params = append(params, applicationId, session.AccountId, offset, pageSize)
 			params = append(params, additionalParams...)
 
 			rows, err := tx.Query(ctx, sql, params...)
