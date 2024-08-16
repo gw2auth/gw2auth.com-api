@@ -51,6 +51,7 @@ type notification struct {
 
 func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
 	apiDowntimeStart := time.Unix(1723827600, 0)
+	apiDowntimeEnd := apiDowntimeStart.Add(time.Hour * 24 * 7)
 	relevantEndpoints := []string{
 		"/v2/tokeninfo",
 		"/v2/account",
@@ -105,18 +106,20 @@ func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
 		}
 
 		now := time.Now()
-		if now.After(apiDowntimeStart) {
-			notifications = append(notifications, notification{
-				Type:    notificationTypeInfo,
-				Header:  "The Guild Wars 2 API is temporarily disabled",
-				Content: "The official Guild Wars 2 API is temporarily disabled until about a few days after the release of Janthir Wilds. During this time, it will not be possible to add new API Tokens or verify your accounts.",
-			})
-		} else if timeUntilDowntime := apiDowntimeStart.Sub(now); timeUntilDowntime <= (time.Hour * 24 * 3) {
-			notifications = append(notifications, notification{
-				Type:    notificationTypeInfo,
-				Header:  "The Guild Wars 2 API will be temporarily disabled shortly",
-				Content: "The official Guild Wars 2 API will be temporarily disabled in preparation for the release of Janthir Wilds. It will be kept disabled until about a few days after the release of Janthir Wilds. During this time, it will not be possible to add new API Tokens or verify your accounts.",
-			})
+		if now.Before(apiDowntimeEnd) {
+			if now.After(apiDowntimeStart) {
+				notifications = append(notifications, notification{
+					Type:    notificationTypeWarning,
+					Header:  "The Guild Wars 2 API is temporarily disabled",
+					Content: "The official Guild Wars 2 API is temporarily disabled until 2024-08-23. During this time, it will not be possible to add new API Tokens or to verify your accounts. Applications using GW2Auth might not work properly.\nSee: [Guild Wars 2 API Disabled from August 16-23](https://en-forum.guildwars2.com/topic/149447-guild-wars-2-api-disabled-from-august-16-23)",
+				})
+			} else if timeUntilDowntime := apiDowntimeStart.Sub(now); timeUntilDowntime <= (time.Hour * 24 * 3) {
+				notifications = append(notifications, notification{
+					Type:    notificationTypeInfo,
+					Header:  "The Guild Wars 2 API will be temporarily disabled shortly",
+					Content: "The official Guild Wars 2 API will be temporarily disabled in preparation for the release of Janthir Wilds. It will be kept disabled until 2024-08-23. During this time, it will not be possible to add new API Tokens or verify your accounts.\nSee: [Guild Wars 2 API Disabled from August 16-23](https://en-forum.guildwars2.com/topic/149447-guild-wars-2-api-disabled-from-august-16-23)",
+				})
+			}
 		}
 
 		return c.JSON(http.StatusOK, notifications)
