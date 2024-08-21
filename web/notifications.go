@@ -98,7 +98,7 @@ func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
 				{
 					Type:    notificationTypeWarning,
 					Header:  "The Guild Wars 2 API experiences issues right now",
-					Content: "Some of the endpoints used by GW2Auth appear to be in a degraded state right now. This might cause unexpected results using GW2Auth.",
+					Content: "Some of the endpoints used by GW2Auth appear to be in a degraded state right now. This might impact your experience with GW2Auth and Applications using GW2Auth. ",
 				},
 			}
 		} else {
