@@ -12,6 +12,7 @@ func AuthInfoEndpoint() echo.HandlerFunc {
 		return c.JSON(http.StatusOK, map[string]string{
 			"sessionId":           session.Id,
 			"sessionCreationTime": session.CreationTime.Format(time.RFC3339),
+			"accountCreationTime": session.AccountCreationTime.Format(time.RFC3339),
 			"issuer":              session.Issuer,
 			"idAtIssuer":          session.IdAtIssuer,
 		})
