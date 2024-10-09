@@ -29,6 +29,11 @@ type SessionMetadata struct {
 	Lng float64 `json:"lng"`
 }
 
+func (sm SessionMetadata) IsZero() bool {
+	var zero SessionMetadata
+	return sm == zero
+}
+
 type PgxConn interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
@@ -117,7 +122,11 @@ func DeleteSession(ctx context.Context, conn PgxConn, id string) error {
 	return err
 }
 
-func isMetadataPlausible(orig SessionMetadata, current SessionMetadata, passed time.Duration) bool {
+func isMetadataPlausible(orig, current SessionMetadata, passed time.Duration) bool {
+	if orig.IsZero() {
+		return true
+	}
+
 	travelledKm := distance(orig.Lat, orig.Lng, current.Lat, current.Lng)
 	if travelledKm > 1000 {
 		// never allow to travel more than 1000km

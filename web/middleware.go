@@ -161,14 +161,19 @@ func AuthenticatedMiddleware(conv *service.SessionJwtConverter) echo.MiddlewareF
 		}
 
 		var sessionMetadata auth.SessionMetadata
-		sessionMetadata.Lat, err = strconv.ParseFloat(c.Request().Header.Get(cfLatHeaderName), 64)
-		if err != nil {
-			return ctx, nil, onErr(c, rctx, cookie, claims.SessionId, err)
-		}
+		if cfLat, cfLng := c.Request().Header.Get(cfLatHeaderName), c.Request().Header.Get(cfLngHeaderName); cfLat != "" && cfLng != "" {
+			sessionMetadata.Lat, err = strconv.ParseFloat(cfLat, 64)
+			if err != nil {
+				return ctx, nil, onErr(c, rctx, cookie, claims.SessionId, err)
+			}
 
-		sessionMetadata.Lng, err = strconv.ParseFloat(c.Request().Header.Get(cfLngHeaderName), 64)
-		if err != nil {
-			return ctx, nil, onErr(c, rctx, cookie, claims.SessionId, err)
+			sessionMetadata.Lng, err = strconv.ParseFloat(cfLng, 64)
+			if err != nil {
+				return ctx, nil, onErr(c, rctx, cookie, claims.SessionId, err)
+			}
+		} else {
+			slog.WarnContext(ctx, fmt.Sprintf("CF headers not present: %v", c.Request().Header))
+			// continue with zero value of SessionMetadata
 		}
 
 		var session auth.Session
