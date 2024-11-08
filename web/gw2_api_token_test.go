@@ -384,7 +384,13 @@ AND gw2_account_id = $2
 
 func prepareMuxForAccountRequest(mux *http.ServeMux, token string, gw2AccountId uuid.UUID, name string) {
 	mux.HandleFunc("/v2/account", func(w http.ResponseWriter, req *http.Request) {
-		if strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ") != token {
+		/*
+			if strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ") != token {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+		*/
+		if req.URL.Query().Get("access_token") != token {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -399,7 +405,13 @@ func prepareMuxForAccountRequest(mux *http.ServeMux, token string, gw2AccountId 
 
 func prepareMuxForTokenInfoRequest(mux *http.ServeMux, token, name string, perms ...gw2.Permission) {
 	mux.HandleFunc("/v2/tokeninfo", func(w http.ResponseWriter, req *http.Request) {
-		if strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ") != token {
+		/*
+			if strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ") != token {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+		*/
+		if req.URL.Query().Get("access_token") != token {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}

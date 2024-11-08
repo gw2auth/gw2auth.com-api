@@ -96,11 +96,13 @@ func (c *ApiClient) newRequest(ctx context.Context, endpoint string, token strin
 
 	q := req.URL.Query()
 	q.Set("v", apiVersion)
-	req.URL.RawQuery = q.Encode()
 
 	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		// req.Header.Set("Authorization", "Bearer "+token)
+		q.Set("access_token", token)
 	}
+
+	req.URL.RawQuery = q.Encode()
 
 	return req, nil
 }
