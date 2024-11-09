@@ -50,8 +50,7 @@ type notification struct {
 }
 
 func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
-	apiDowntimeStart := time.Unix(1723827600, 0)
-	apiDowntimeEnd := apiDowntimeStart.Add(time.Hour * 24 * 7)
+	apiDowntimeEnd := time.Unix(1731366000, 0)
 	relevantEndpoints := []string{
 		"/v2/tokeninfo",
 		"/v2/account",
@@ -107,19 +106,11 @@ func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
 
 		now := time.Now()
 		if now.Before(apiDowntimeEnd) {
-			if now.After(apiDowntimeStart) {
-				notifications = append(notifications, notification{
-					Type:    notificationTypeWarning,
-					Header:  "The Guild Wars 2 API is temporarily disabled",
-					Content: "The official Guild Wars 2 API is temporarily disabled until 2024-08-23. During this time, it will not be possible to add new API Tokens or to verify your accounts. Applications using GW2Auth might not work properly.\nSee: [Guild Wars 2 API Disabled from August 16-23](https://en-forum.guildwars2.com/topic/149447-guild-wars-2-api-disabled-from-august-16-23)",
-				})
-			} else if timeUntilDowntime := apiDowntimeStart.Sub(now); timeUntilDowntime <= (time.Hour * 24 * 3) {
-				notifications = append(notifications, notification{
-					Type:    notificationTypeInfo,
-					Header:  "The Guild Wars 2 API will be temporarily disabled shortly",
-					Content: "The official Guild Wars 2 API will be temporarily disabled in preparation for the release of Janthir Wilds. It will be kept disabled until 2024-08-23. During this time, it will not be possible to add new API Tokens or verify your accounts.\nSee: [Guild Wars 2 API Disabled from August 16-23](https://en-forum.guildwars2.com/topic/149447-guild-wars-2-api-disabled-from-august-16-23)",
-				})
-			}
+			notifications = append(notifications, notification{
+				Type:    notificationTypeWarning,
+				Header:  "Issues with the Guild Wars 2 API",
+				Content: "Please be aware of issues with the official Guild Wars 2 API. Applications using GW2Auth might not work properly. GW2Auth itself is not affected.\nSee: [Issues with the Guild Wars 2 API](https://en-forum.guildwars2.com/topic/153373-issues-with-the-guild-wars-2-api/)",
+			})
 		}
 
 		return c.JSON(http.StatusOK, notifications)
