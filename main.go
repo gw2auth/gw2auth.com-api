@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 )
 
 func main() {
@@ -44,17 +45,22 @@ func main() {
 }
 
 func loadSecrets(ctx context.Context) (Secrets, error) {
-	pub1, err := loadFile("/Users/felix/.gw2auth/session_id_rsa_1.pub")
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return Secrets{}, err
 	}
 
-	pub2, err := loadFile("/Users/felix/.gw2auth/session_id_rsa_2.pub")
+	pub1, err := loadFile(filepath.Join(home, ".gw2auth", "session_id_rsa_1.pub"))
 	if err != nil {
 		return Secrets{}, err
 	}
 
-	priv, err := loadFile("/Users/felix/.gw2auth/session_id_rsa_2")
+	pub2, err := loadFile(filepath.Join(home, ".gw2auth", "session_id_rsa_2.pub"))
+	if err != nil {
+		return Secrets{}, err
+	}
+
+	priv, err := loadFile(filepath.Join(home, ".gw2auth", "session_id_rsa_2"))
 	if err != nil {
 		return Secrets{}, err
 	}
