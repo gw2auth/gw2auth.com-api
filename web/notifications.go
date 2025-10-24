@@ -74,102 +74,7 @@ func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
 	}
 
 	return func(c echo.Context) error {
-		ctx := c.Request().Context()
-		g, gCtx := errgroup.WithContext(ctx)
-
-		var disabledEndpoints []string
-		var endpointsWithIssues []string
-
-		g.Go(func() error {
-			req, err := http.NewRequestWithContext(gCtx, http.MethodGet, "https://api.guildwars2.com/v2.json", nil)
-			if err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError)
-			}
-
-			req.Header.Set("User-Agent", "GW2Auth")
-
-			res, err := httpClient.Do(req)
-			if err != nil {
-				return echo.NewHTTPError(http.StatusBadGateway, err)
-			}
-
-			defer res.Body.Close()
-
-			if res.StatusCode != http.StatusOK {
-				return echo.NewHTTPError(http.StatusBadGateway, fmt.Errorf("unexpected status code: %d", res.StatusCode))
-			}
-
-			var gw2Status gw2StatusResponse
-			if err = json.NewDecoder(res.Body).Decode(&gw2Status); err != nil {
-				return echo.NewHTTPError(http.StatusBadGateway, err)
-			}
-
-			for _, element := range gw2Status.Routes {
-				if slices.Contains(relevantEndpoints, element.Path) && !element.Active {
-					disabledEndpoints = append(disabledEndpoints, element.Path)
-				}
-			}
-
-			return nil
-		})
-
-		g.Go(func() error {
-			req, err := http.NewRequestWithContext(gCtx, http.MethodGet, "https://status.gw2efficiency.com/api", nil)
-			if err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError)
-			}
-
-			req.Header.Set("User-Agent", "GW2Auth")
-
-			res, err := httpClient.Do(req)
-			if err != nil {
-				return echo.NewHTTPError(http.StatusBadGateway, err)
-			}
-
-			defer res.Body.Close()
-
-			if res.StatusCode != http.StatusOK {
-				return echo.NewHTTPError(http.StatusBadGateway, fmt.Errorf("unexpected status code: %d", res.StatusCode))
-			}
-
-			var gw2EffStatus gw2EffApiStatusResponse
-			if err = json.NewDecoder(res.Body).Decode(&gw2EffStatus); err != nil {
-				return echo.NewHTTPError(http.StatusBadGateway, err)
-			}
-
-			for _, element := range gw2EffStatus.Data {
-				if slices.Contains(relevantEndpoints, element.Name) && (element.Status != http.StatusOK || element.CheckError() || element.Duration >= 15_000) {
-					endpointsWithIssues = append(endpointsWithIssues, element.Name)
-				}
-			}
-
-			return nil
-		})
-
-		if err := g.Wait(); err != nil {
-			var httpErr *echo.HTTPError
-			if errors.As(err, &httpErr) {
-				return httpErr
-			} else {
-				return echo.NewHTTPError(http.StatusInternalServerError)
-			}
-		}
-
 		notifications := make([]notification, 0)
-
-		if len(disabledEndpoints) > 0 {
-			notifications = append(notifications, notification{
-				Type:    notificationTypeError,
-				Header:  "The Guild Wars 2 API is unavailable",
-				Content: "Some of the endpoints used by GW2Auth are currently disabled. This might impact your experience with GW2Auth and Applications using GW2Auth.",
-			})
-		} else if len(endpointsWithIssues) > 0 {
-			notifications = append(notifications, notification{
-				Type:    notificationTypeWarning,
-				Header:  "The Guild Wars 2 API experiences issues right now",
-				Content: "Some of the endpoints used by GW2Auth appear to be in a degraded state right now. This might impact your experience with GW2Auth and Applications using GW2Auth.",
-			})
-		}
 
 		now := time.Now()
 		if now.After(apiDowntimeStart) && now.Before(apiDowntimeEnd) {
@@ -181,6 +86,100 @@ func NotificationsEndpoint(httpClient *http.Client) echo.HandlerFunc {
 					apiDowntimeEnd.Format(time.RFC3339),
 				),
 			})
+		} else {
+			g, gCtx := errgroup.WithContext(c.Request().Context())
+
+			var disabledEndpoints []string
+			var endpointsWithIssues []string
+
+			g.Go(func() error {
+				req, err := http.NewRequestWithContext(gCtx, http.MethodGet, "https://api.guildwars2.com/v2.json", nil)
+				if err != nil {
+					return echo.NewHTTPError(http.StatusInternalServerError)
+				}
+
+				req.Header.Set("User-Agent", "GW2Auth")
+
+				res, err := httpClient.Do(req)
+				if err != nil {
+					return echo.NewHTTPError(http.StatusBadGateway, err)
+				}
+
+				defer res.Body.Close()
+
+				if res.StatusCode != http.StatusOK {
+					return echo.NewHTTPError(http.StatusBadGateway, fmt.Errorf("unexpected status code: %d", res.StatusCode))
+				}
+
+				var gw2Status gw2StatusResponse
+				if err = json.NewDecoder(res.Body).Decode(&gw2Status); err != nil {
+					return echo.NewHTTPError(http.StatusBadGateway, err)
+				}
+
+				for _, element := range gw2Status.Routes {
+					if slices.Contains(relevantEndpoints, element.Path) && !element.Active {
+						disabledEndpoints = append(disabledEndpoints, element.Path)
+					}
+				}
+
+				return nil
+			})
+
+			g.Go(func() error {
+				req, err := http.NewRequestWithContext(gCtx, http.MethodGet, "https://status.gw2efficiency.com/api", nil)
+				if err != nil {
+					return echo.NewHTTPError(http.StatusInternalServerError)
+				}
+
+				req.Header.Set("User-Agent", "GW2Auth")
+
+				res, err := httpClient.Do(req)
+				if err != nil {
+					return echo.NewHTTPError(http.StatusBadGateway, err)
+				}
+
+				defer res.Body.Close()
+
+				if res.StatusCode != http.StatusOK {
+					return echo.NewHTTPError(http.StatusBadGateway, fmt.Errorf("unexpected status code: %d", res.StatusCode))
+				}
+
+				var gw2EffStatus gw2EffApiStatusResponse
+				if err = json.NewDecoder(res.Body).Decode(&gw2EffStatus); err != nil {
+					return echo.NewHTTPError(http.StatusBadGateway, err)
+				}
+
+				for _, element := range gw2EffStatus.Data {
+					if slices.Contains(relevantEndpoints, element.Name) && (element.Status != http.StatusOK || element.CheckError() || element.Duration >= 15_000) {
+						endpointsWithIssues = append(endpointsWithIssues, element.Name)
+					}
+				}
+
+				return nil
+			})
+
+			if err := g.Wait(); err != nil {
+				var httpErr *echo.HTTPError
+				if errors.As(err, &httpErr) {
+					return httpErr
+				} else {
+					return echo.NewHTTPError(http.StatusInternalServerError)
+				}
+			}
+
+			if len(disabledEndpoints) > 0 {
+				notifications = append(notifications, notification{
+					Type:    notificationTypeError,
+					Header:  "The Guild Wars 2 API is unavailable",
+					Content: "Some of the endpoints used by GW2Auth are currently disabled. This might impact your experience with GW2Auth and Applications using GW2Auth.",
+				})
+			} else if len(endpointsWithIssues) > 0 {
+				notifications = append(notifications, notification{
+					Type:    notificationTypeWarning,
+					Header:  "The Guild Wars 2 API experiences issues right now",
+					Content: "Some of the endpoints used by GW2Auth appear to be in a degraded state right now. This might impact your experience with GW2Auth and Applications using GW2Auth.",
+				})
+			}
 		}
 
 		return c.JSON(http.StatusOK, notifications)
