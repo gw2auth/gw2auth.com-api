@@ -3,9 +3,10 @@ package telemetry
 import (
 	"context"
 	"errors"
+
 	"go.opentelemetry.io/contrib/detectors/aws/lambda"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.38.0"
 )
 
 type provider interface {
