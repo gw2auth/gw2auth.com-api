@@ -80,6 +80,7 @@ func DeleteAccountEndpoint() echo.HandlerFunc {
 	return wrapAuthenticatedHandlerFunc(func(c echo.Context, rctx RequestContext, session auth.Session) error {
 		ctx := c.Request().Context()
 		var found bool
+		deletionTime := time.Now().UTC()
 		err := rctx.ExecuteTx(ctx, pgx.TxOptions{}, func(tx pgx.Tx) error {
 			const sql = "DELETE FROM accounts WHERE id = $1"
 			tags, err := tx.Exec(ctx, sql, session.AccountId)
@@ -88,7 +89,17 @@ func DeleteAccountEndpoint() echo.HandlerFunc {
 			}
 
 			found = tags.RowsAffected() > 0
-			return nil
+			if !found {
+				return nil
+			}
+
+			const updateRegistrySQL = `
+UPDATE account_registry
+SET deletion_time = $2
+WHERE id = $1
+`
+			_, err = tx.Exec(ctx, updateRegistrySQL, session.AccountId, deletionTime)
+			return err
 		})
 
 		if err != nil {

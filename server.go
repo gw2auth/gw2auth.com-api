@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/rsa"
+	"net/http"
+
 	"github.com/exaring/otelpgx"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gw2auth/gw2auth.com-api/service"
@@ -16,7 +18,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-lambda-go/otellambda"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"net/http"
 )
 
 type Secrets struct {
@@ -142,6 +143,7 @@ func newEchoServer(pool *pgxpool.Pool, httpClient *http.Client, gw2ApiClient *gw
 
 	// region application api
 	applicationAPIGroup := app.Group("/api-app", web.ApplicationAPIKeyAuthenticatedMiddleware())
+	applicationAPIGroup.GET("/application/user/deleted", web.ApplicationDeletedUsersEndpoint(), web.ApplicationAPIKeyPermissionMiddleware(auth.PermissionRead))
 	applicationAPIGroup.PATCH("/application/client/:client_id/redirecturi", web.ModifyDevApplicationClientRedirectURIsEndpoint(), web.ApplicationAPIKeyPermissionMiddleware(auth.PermissionClientModify))
 	// endregion
 

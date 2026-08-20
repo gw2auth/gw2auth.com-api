@@ -2,19 +2,80 @@ package web
 
 import (
 	"errors"
+	"log/slog"
+	"net/http"
+	"slices"
+	"time"
+
 	"github.com/gofrs/uuid/v5"
 	"github.com/gw2auth/gw2auth.com-api/service/auth"
 	"github.com/gw2auth/gw2auth.com-api/util"
 	"github.com/jackc/pgx/v5"
 	"github.com/labstack/echo/v4"
-	"log/slog"
-	"net/http"
-	"slices"
 )
 
 type modifyRedirectURIsRequest struct {
 	Add    []string `json:"add"`
 	Remove []string `json:"remove"`
+}
+
+type applicationUserDeletion struct {
+	Id           uuid.UUID `json:"id"`
+	DeletionTime time.Time `json:"deletion_time"`
+}
+
+type applicationUsersResponse struct {
+	Watermark time.Time                 `json:"watermark"`
+	Users     []applicationUserDeletion `json:"users"`
+}
+
+func ApplicationDeletedUsersEndpoint() echo.HandlerFunc {
+	return wrapApiKeyAuthenticatedHandlerFunc(func(c echo.Context, rctx RequestContext, apiKey auth.ApiKey) error {
+		since := time.Date(1969, time.January, 1, 0, 0, 0, 0, time.UTC)
+		if sinceRaw := c.QueryParam("since"); sinceRaw != "" {
+			var err error
+			if since, err = time.Parse(time.RFC3339, sinceRaw); err != nil {
+				return echo.NewHTTPError(http.StatusBadRequest, err)
+			}
+		}
+
+		watermark := time.Now().UTC().Add(-time.Minute)
+		users := make([]applicationUserDeletion, 0)
+		ctx := c.Request().Context()
+		err := rctx.ExecuteTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+			const sql = `
+SELECT
+    account_subs.account_sub,
+    account_registry.deletion_time
+FROM account_registry
+INNER JOIN application_account_subs account_subs
+ON account_registry.id = account_subs.account_id
+WHERE account_subs.application_id = $1
+AND account_registry.deletion_time < $2
+AND account_registry.deletion_time >= $3
+ORDER BY account_registry.deletion_time, account_subs.account_sub
+`
+			rows, err := tx.Query(ctx, sql, apiKey.ApplicationId, watermark, since)
+			if err != nil {
+				return err
+			}
+
+			users, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (applicationUserDeletion, error) {
+				var user applicationUserDeletion
+				return user, row.Scan(&user.Id, &user.DeletionTime)
+			})
+			return err
+		})
+
+		if err != nil {
+			return util.NewEchoPgxHTTPError(err)
+		}
+
+		return c.JSON(http.StatusOK, applicationUsersResponse{
+			Watermark: watermark,
+			Users:     users,
+		})
+	})
 }
 
 func ModifyDevApplicationClientRedirectURIsEndpoint() echo.HandlerFunc {

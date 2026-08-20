@@ -9,6 +9,7 @@ import (
 )
 
 func CreateAccount(t testing.TB, pool *pgxpool.Pool, id uuid.UUID, creationTime time.Time) {
+	MustExec(t, pool, `INSERT INTO account_registry (id) VALUES ($1)`, id)
 	MustExec(t, pool, `INSERT INTO accounts (id, creation_time) VALUES ($1, $2)`, id, creationTime)
 }
 
